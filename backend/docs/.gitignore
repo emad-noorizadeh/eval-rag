@@ -1,0 +1,7 @@
+# Documentation build artifacts
+*.tmp
+*.temp
+.DS_Store
+
+# Keep all .md files
+!*.md

@@ -1,0 +1,17 @@
+RAG Frontend - Retrieval-Augmented Generation Testing Interface
+
+Copyright 2025 Emad Noorizadeh
+
+This product includes software developed by the following third-party libraries:
+
+- FastAPI (MIT License) - https://fastapi.tiangolo.com/
+- Next.js (MIT License) - https://nextjs.org/
+- LlamaIndex (MIT License) - https://www.llamaindex.ai/
+- ChromaDB (Apache 2.0 License) - https://www.trychroma.com/
+- OpenAI API - https://openai.com/
+- Sentence Transformers (Apache 2.0 License) - https://www.sbert.net/
+- spaCy (MIT License) - https://spacy.io/
+- PyTorch (BSD License) - https://pytorch.org/
+- Hugging Face Transformers (Apache 2.0 License) - https://huggingface.co/
+
+For full license details, see the LICENSE file.
