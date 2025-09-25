@@ -69,6 +69,8 @@ data/
 index/
 *.json
 *.txt
+!requirements.txt
+!**/requirements.txt
 *.pdf
 *.docx
 *.doc

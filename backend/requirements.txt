@@ -1,0 +1,16 @@
+# RAG Testing Interface Backend Dependencies
+# Author: Emad Noorizadeh
+
+fastapi==0.115.9
+uvicorn==0.34.0
+chromadb==1.0.3
+python-multipart==0.0.20
+llama-index==0.12.28
+llama-index-embeddings-openai==0.3.1
+llama-index-llms-openai==0.3.30
+llama-index-vector-stores-chroma==0.4.1
+openai==1.107.2
+langgraph==0.2.16
+PyMuPDF==1.24.0
+rank-bm25==0.2.2
+spacy==3.8.3
