@@ -67,7 +67,23 @@ chroma_db/
 # Data files
 data/
 index/
-*.json
+# Ignore specific JSON files (not package.json, tsconfig.json, etc.)
+package-lock.json
+yarn.lock
+*.log.json
+# Ignore data JSON files
+*.data.json
+*.cache.json
+*.temp.json
+# Keep important config files
+!package.json
+!tsconfig.json
+!next.config.*
+!tailwind.config.*
+!postcss.config.*
+!eslint.config.*
+!requirements.txt
+!**/requirements.txt
 *.txt
 *.pdf
 *.docx

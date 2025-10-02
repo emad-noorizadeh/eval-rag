@@ -1,0 +1,19 @@
+{
+  "index_id": "hybrid-index-20250922-222647",
+  "created_at": "2025-09-22T22:26:47.181393",
+  "last_updated": "2025-09-22T22:26:47.181394",
+  "source_folder": "data",
+  "retrieval_method": "hybrid",
+  "index_builder_type": "enhanced",
+  "capabilities": {
+    "embedding": true,
+    "enhanced_metadata": true,
+    "chunk_metadata": true,
+    "bm25_chunks": true,
+    "bm25_metadata": true,
+    "heuristics": true
+  },
+  "collection_name": "enhanced-search",
+  "chunk_size": 1024,
+  "chunk_overlap": 20
+}
