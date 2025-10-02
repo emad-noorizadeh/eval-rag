@@ -17,6 +17,29 @@ RAG Testing Interface Backend
 Author: Emad Noorizadeh
 """
 
+# Load environment variables from .env file FIRST
+from dotenv import load_dotenv
+load_dotenv()
+
+# Disable all telemetry and external logging
+from disable_telemetry import (
+    disable_all_telemetry, 
+    configure_local_logging_only, 
+    disable_network_telemetry,
+    disable_all_external_connections,
+    create_network_monitor
+)
+disable_all_telemetry()
+configure_local_logging_only()
+disable_network_telemetry()
+disable_all_external_connections()
+create_network_monitor()
+
+# Enable URL guardrail to block all external requests
+from url_guardrail import block_external_requests, create_network_monitor as create_url_monitor
+block_external_requests()
+create_url_monitor()
+
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel

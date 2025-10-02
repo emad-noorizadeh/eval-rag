@@ -117,13 +117,15 @@ class SystemConfig:
                 "max_tokens": 1000
             },
             
-            # Logging Configuration
+            # Logging Configuration - LOCAL ONLY, NO EXTERNAL TELEMETRY
             "logging": {
-                "level": "INFO",
+                "level": "WARNING",  # Reduced verbosity
                 "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-                "file": "./logs/rag_system.log",
+                "file": "./logs/rag_system_local.log",  # Local file only
                 "max_size_mb": 10,
-                "backup_count": 5
+                "backup_count": 5,
+                "disable_external": True,  # Disable all external logging
+                "telemetry_disabled": True  # Explicit telemetry disable
             },
             
             # Performance Configuration
