@@ -18,6 +18,11 @@ nosetests.xml
 coverage.xml
 *.cover
 *.log
+
+# Python wheel files
+*.whl
+wheels/
+**/wheels/
 .git
 .mypy_cache
 .pytest_cache
