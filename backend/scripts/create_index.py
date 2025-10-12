@@ -81,7 +81,7 @@ def main():
         return 0
     
     # Build or rebuild index
-    if args.overwrite and collection_info.get('total_documents', 0) > 0:
+    if args.overwrite:
         print("🔄 Rebuilding index...")
         index_builder.clear_index()
     
