@@ -43,7 +43,8 @@ class URLGuardrail:
         self.allowed_domains: Set[str] = {
             # Essential APIs only
             "api.openai.com",
-            "api.langgraph.com", 
+            "openaipublic.blob.core.windows.net",  # OpenAI tokenizer files
+            "api.langgraph.com",
             "api.chroma.ai",
             "localhost",
             "127.0.0.1",
@@ -57,13 +58,16 @@ class URLGuardrail:
             "/v1/embeddings",
             "/v1/models",
             "/v1/completions",
-            
+
+            # OpenAI tokenizer files
+            "/encodings/cl100k_base.tiktoken",
+
             # LangGraph API paths (if any)
             "/api/v1/",
-            
+
             # ChromaDB API paths (if any)
             "/api/v1/",
-            
+
             # Local paths
             "/",
             "/health",
@@ -173,7 +177,7 @@ class URLGuardrail:
             "event", "click", "view", "impression", "conversion",
             "ab_test", "experiment", "feature_flag", "toggle",
             "config", "settings", "preferences", "user_data",
-            "session", "cookie", "token", "auth", "login",
+            "session", "cookie", "auth", "login",
             "signup", "register", "password", "reset", "verify",
             "email", "sms", "notification", "alert", "reminder",
             "backup", "sync", "replicate", "mirror", "clone",
@@ -183,7 +187,7 @@ class URLGuardrail:
             "cache", "redis", "memcached", "elasticsearch", "solr",
             "database", "db", "sql", "nosql", "mongodb", "postgres",
             "mysql", "oracle", "sqlite", "cassandra", "dynamodb",
-            "s3", "gcs", "azure", "blob", "storage", "bucket",
+            "s3", "gcs", "azure", "storage", "bucket",
             "cdn", "cloudfront", "cloudflare", "fastly", "maxcdn",
             "dns", "domain", "subdomain", "wildcard", "certificate",
             "ssl", "tls", "https", "http", "ftp", "sftp", "scp",
@@ -238,6 +242,10 @@ class URLGuardrail:
             if domain in self.blocked_domains:
                 self.logger.warning(f"Blocked domain: {domain}")
                 return False
+            
+            # Allow OpenAI tokenizer files specifically
+            if domain == "openaipublic.blob.core.windows.net" and path.startswith("/encodings/"):
+                return True
             
             # Check if domain contains blocked keywords
             for keyword in self.blocked_keywords:
