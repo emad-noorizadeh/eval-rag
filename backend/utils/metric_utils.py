@@ -546,26 +546,37 @@ def _cosine(vec1: Dict[str, float], vec2: Dict[str, float]) -> float:
     return dot / (n1 * n2)
 
 _EMB = None
-def _maybe_load_embedder(model_name: str = "models/all-MiniLM-L6-v2"):
+def _maybe_load_embedder(model_name: str = None):
     global _EMB
     if _EMB is not None:
         return _EMB
     try:
         from sentence_transformers import SentenceTransformer
+        from .models_path import get_model_path
         import os
+        
+        # Use provided model_name or get from models path
+        if model_name is None:
+            model_path = get_model_path("all-MiniLM-L6-v2")
+        else:
+            model_path = model_name
+            
         # Use local path if it exists, otherwise fall back to HuggingFace
-        if os.path.exists(model_name):
-            _EMB = SentenceTransformer(model_name, device="cpu")
+        if os.path.exists(model_path):
+            _EMB = SentenceTransformer(model_path, device="cpu")
+            print(f"✓ Loaded local model from: {model_path}")
         else:
             # Fallback to HuggingFace if local model not found
             _EMB = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2", device="cpu")
-    except Exception:
+            print(f"⚠️  Local model not found at {model_path}, using HuggingFace model")
+    except Exception as e:
+        print(f"❌ Error loading model: {e}")
         _EMB = None
     return _EMB
 
 def _embed_alignment(question: str, answer: str, q_terms: List[str], idf: Dict[str, float],
                      term_threshold: float = 0.5,
-                     model_name: str = "models/all-MiniLM-L6-v2") -> Dict[str, Optional[float]]:
+                     model_name: str = None) -> Dict[str, Optional[float]]:
     """Calculate semantic alignment between question and answer using Sentence Transformers."""
     model = _maybe_load_embedder(model_name)
     if model is None or not question or not answer:
@@ -585,7 +596,7 @@ def _embed_alignment(question: str, answer: str, q_terms: List[str], idf: Dict[s
     return {"cosine_embed": round(cos, 4), "answer_covers_question_sem": round(covered / total, 4)}
 
 def _embed_context_alignment(answer: str, contexts: List[str], 
-                            model_name: str = "models/all-MiniLM-L6-v2") -> Dict[str, Optional[float]]:
+                            model_name: str = None) -> Dict[str, Optional[float]]:
     """Calculate semantic alignment between answer and retrieved contexts using Sentence Transformers."""
     model = _maybe_load_embedder(model_name)
     if model is None or not answer or not contexts:

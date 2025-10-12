@@ -34,13 +34,14 @@ def download_and_save_model():
         model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
         print("✅ Model downloaded successfully")
         
-        # Use existing models directory (relative to backend folder)
-        models_dir = "../models"
+        # Use models path from environment or default
+        from utils.models_path import get_models_path, ensure_models_directory
         
-        # Check if models directory exists
-        if not os.path.exists(models_dir):
-            print(f"❌ Error: Models directory not found at {models_dir}")
-            print("Please ensure the models directory exists in the backend folder.")
+        models_dir = get_models_path()
+        
+        # Ensure models directory exists
+        if not ensure_models_directory():
+            print(f"❌ Error: Could not create models directory at {models_dir}")
             return False
         
         # Save the model to the models directory
@@ -63,8 +64,8 @@ def download_and_save_model():
         print("\n🎉 Model download and save completed successfully!")
         print("You can now load the model locally using:")
         print(f"model = SentenceTransformer('{model_path}')")
-        print("Or from the backend directory:")
-        print("model = SentenceTransformer('./models/all-MiniLM-L6-v2')")
+        print(f"Models directory: {models_dir}")
+        print("The model will be automatically loaded from this location by the system.")
         
         return True
         

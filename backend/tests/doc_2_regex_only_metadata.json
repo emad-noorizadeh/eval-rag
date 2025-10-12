@@ -1,0 +1,42 @@
+{
+  "extraction_method": "regex_only",
+  "processing_time": 0.003248,
+  "confidence_scores": {
+    "deterministic": 0.9,
+    "semantic": 0.0,
+    "overall": 0.9
+  },
+  "deterministic_metadata": {
+    "title": "[Skip to main content](https://www.bankofamerica.com/deposits/account-fees/#skip-to-h1)",
+    "headline": "[Skip to main content](https://www.bankofamerica.com/deposits/account-fees/#skip-to-h1)",
+    "link_text": "Skip to main content",
+    "link_url": "https://www.bankofamerica.com/deposits/account-fees/#skip-to-h1",
+    "is_link": true,
+    "headings": "[{\"level\": 1, \"text\": \"Bank Account Fees\"}, {\"level\": 2, \"text\": \"Effective:\"}, {\"level\": 2, \"text\": \"Advantage Plus Banking\"}]",
+    "main_heading": "Bank Account Fees",
+    "categories": "financial",
+    "line_count": 828,
+    "word_count": 5203,
+    "char_count": 38241,
+    "urls": "https://www.bankofamerica.com/deposits/account-fees/#skip-to-h1), https://www.bankofamerica.com/deposits/account-fees/#), https://www.bankofamerica.com/deposits/account-rates-fees-faqs/#qualifying-direct-deposits)., https://promotions.bankofamerica.com/preferredrewards/en/), https://www.bankofamerica.com/deposits/resources/personal-schedule-fees.go?request_locale=en_US)",
+    "processed_at": "2025-09-10T16:18:28.618991"
+  },
+  "semantic_metadata": null,
+  "combined_metadata": {
+    "title": "[Skip to main content](https://www.bankofamerica.com/deposits/account-fees/#skip-to-h1)",
+    "headline": "[Skip to main content](https://www.bankofamerica.com/deposits/account-fees/#skip-to-h1)",
+    "link_text": "Skip to main content",
+    "link_url": "https://www.bankofamerica.com/deposits/account-fees/#skip-to-h1",
+    "is_link": true,
+    "headings": "[{\"level\": 1, \"text\": \"Bank Account Fees\"}, {\"level\": 2, \"text\": \"Effective:\"}, {\"level\": 2, \"text\": \"Advantage Plus Banking\"}]",
+    "main_heading": "Bank Account Fees",
+    "categories": "financial",
+    "line_count": 828,
+    "word_count": 5203,
+    "char_count": 38241,
+    "urls": "https://www.bankofamerica.com/deposits/account-fees/#skip-to-h1), https://www.bankofamerica.com/deposits/account-fees/#), https://www.bankofamerica.com/deposits/account-rates-fees-faqs/#qualifying-direct-deposits)., https://promotions.bankofamerica.com/preferredrewards/en/), https://www.bankofamerica.com/deposits/resources/personal-schedule-fees.go?request_locale=en_US)",
+    "processed_at": "2025-09-10T16:18:28.618991",
+    "extraction_method": "regex_only",
+    "llm_confidence": 0.0
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "extraction_method": "regex_only",
+  "processing_time": 0.00198,
+  "confidence_scores": {
+    "deterministic": 0.9,
+    "semantic": 0.0,
+    "overall": 0.9
+  },
+  "deterministic_metadata": {
+    "title": "[Skip to content](https://promotions.bankofamerica.com/preferredrewards/en#main-content)",
+    "headline": "[Skip to content](https://promotions.bankofamerica.com/preferredrewards/en#main-content)",
+    "link_text": "Skip to content",
+    "link_url": "https://promotions.bankofamerica.com/preferredrewards/en#main-content",
+    "is_link": true,
+    "headings": "[{\"level\": 1, \"text\": \"Rewards built around you.\"}]",
+    "main_heading": "Rewards built around you.",
+    "categories": "rewards, financial",
+    "line_count": 480,
+    "word_count": 3419,
+    "char_count": 26883,
+    "urls": "https://promotions.bankofamerica.com/preferredrewards/en#main-content), https://promotions.bankofamerica.com/content/dam/consumer-marketing/preferredrewards/diamond/icons/img_PREquation_mob.png), https://promotions.bankofamerica.com/content/dam/consumer-marketing/preferredrewards/icons/preferredrewards-play-button-mob.svg), https://promotions.bankofamerica.com/content/experience-fragments/consumer_marketing/preferred-rewards/en_disclosures/masthead-video/master), https://promotions.bankofamerica.com/preferredrewards/en#disclosure-317172511)",
+    "processed_at": "2025-09-10T16:18:28.621398"
+  },
+  "semantic_metadata": null,
+  "combined_metadata": {
+    "title": "[Skip to content](https://promotions.bankofamerica.com/preferredrewards/en#main-content)",
+    "headline": "[Skip to content](https://promotions.bankofamerica.com/preferredrewards/en#main-content)",
+    "link_text": "Skip to content",
+    "link_url": "https://promotions.bankofamerica.com/preferredrewards/en#main-content",
+    "is_link": true,
+    "headings": "[{\"level\": 1, \"text\": \"Rewards built around you.\"}]",
+    "main_heading": "Rewards built around you.",
+    "categories": "rewards, financial",
+    "line_count": 480,
+    "word_count": 3419,
+    "char_count": 26883,
+    "urls": "https://promotions.bankofamerica.com/preferredrewards/en#main-content), https://promotions.bankofamerica.com/content/dam/consumer-marketing/preferredrewards/diamond/icons/img_PREquation_mob.png), https://promotions.bankofamerica.com/content/dam/consumer-marketing/preferredrewards/icons/preferredrewards-play-button-mob.svg), https://promotions.bankofamerica.com/content/experience-fragments/consumer_marketing/preferred-rewards/en_disclosures/masthead-video/master), https://promotions.bankofamerica.com/preferredrewards/en#disclosure-317172511)",
+    "processed_at": "2025-09-10T16:18:28.621398",
+    "extraction_method": "regex_only",
+    "llm_confidence": 0.0
+  }
+}

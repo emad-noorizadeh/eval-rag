@@ -1,0 +1,19 @@
+{
+  "index_id": "semantic-index-20250923-103756",
+  "created_at": "2025-09-23T10:37:56.725648",
+  "last_updated": "2025-09-23T10:37:56.725649",
+  "source_folder": "../data",
+  "retrieval_method": "semantic",
+  "index_builder_type": "basic",
+  "capabilities": {
+    "embedding": true,
+    "enhanced_metadata": false,
+    "chunk_metadata": false,
+    "bm25_chunks": true,
+    "bm25_metadata": true,
+    "heuristics": false
+  },
+  "collection_name": "enhanced-search",
+  "chunk_size": 1024,
+  "chunk_overlap": 20
+}

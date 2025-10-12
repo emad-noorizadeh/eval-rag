@@ -1,0 +1,171 @@
+{
+  "document_metadata": {
+    "doc_39b59a7b": {
+      "doc_id": "doc_39b59a7b",
+      "canonical_url": "https://promotions.bankofamerica.com/preferredrewards/en",
+      "domain": "promotions.bankofamerica.com",
+      "doc_type": "promo",
+      "language": "en",
+      "title": "Bank of America Preferred Rewards Program",
+      "categories": [
+        "General"
+      ],
+      "product_entities": [],
+      "authority_score": 0.7,
+      "geo_scope": "US",
+      "currency": "USD",
+      "file_path": "/path/to/preferred_rewards.txt",
+      "created_at": "2025-09-18T00:18:41.592100"
+    },
+    "doc_4fc4cb4e": {
+      "doc_id": "doc_4fc4cb4e",
+      "canonical_url": "https://promotions.bankofamerica.com/preferredrewards/en",
+      "domain": "promotions.bankofamerica.com",
+      "doc_type": "promo",
+      "language": "en",
+      "title": "Bank of America Preferred Rewards Program",
+      "categories": [
+        "Banking",
+        "Rewards Program",
+        "Financial Services"
+      ],
+      "product_entities": [
+        "Bank of America Preferred Rewards Program",
+        "Gold",
+        "Platinum",
+        "Diamond"
+      ],
+      "authority_score": 0.7,
+      "geo_scope": "US",
+      "currency": "USD",
+      "file_path": "/path/to/preferred_rewards.txt",
+      "created_at": "2025-09-18T00:19:11.608826"
+    },
+    "doc_6893db1f": {
+      "doc_id": "doc_6893db1f",
+      "canonical_url": "https://promotions.bankofamerica.com/preferredrewards/en",
+      "domain": "promotions.bankofamerica.com",
+      "doc_type": "promo",
+      "language": "en",
+      "title": "Bank of America Preferred Rewards Program",
+      "categories": [
+        "Banking",
+        "Rewards Program",
+        "Personal Finance"
+      ],
+      "product_entities": [
+        "Bank of America Preferred Rewards Program",
+        "Gold",
+        "Platinum",
+        "Diamond"
+      ],
+      "authority_score": 0.7,
+      "geo_scope": "US",
+      "currency": "USD",
+      "file_path": "/path/to/preferred_rewards.txt",
+      "created_at": "2025-09-18T00:19:33.105018"
+    },
+    "doc_700b46dc": {
+      "doc_id": "doc_700b46dc",
+      "canonical_url": "file:///Users/emadn/Projects/rag-frontend/backend/data/District 7 Zoning Questionnaire-8625 La Parada Dr_parsed.txt",
+      "domain": "local",
+      "doc_type": "form",
+      "language": "en",
+      "title": "District 7 Developer Questionnaire",
+      "categories": [
+        "Urban Development",
+        "Sustainable Housing",
+        "Community Planning"
+      ],
+      "product_entities": [],
+      "authority_score": 0.55,
+      "geo_scope": "US",
+      "currency": "USD",
+      "file_path": "/Users/emadn/Projects/rag-frontend/backend/data/District 7 Zoning Questionnaire-8625 La Parada Dr_parsed.txt",
+      "created_at": "2025-09-18T00:19:36.431858"
+    },
+    "doc_31056dfa": {
+      "doc_id": "doc_31056dfa",
+      "canonical_url": "file:///Users/emadn/Projects/rag-frontend/backend/data/doc_1.txt",
+      "domain": "local",
+      "doc_type": "landing",
+      "language": "en",
+      "title": "Rewards built around you.",
+      "categories": [
+        "Banking",
+        "Rewards Program",
+        "Financial Services"
+      ],
+      "product_entities": [
+        "Bank of America Preferred Rewards",
+        "Merrill"
+      ],
+      "authority_score": 0.6,
+      "geo_scope": "US",
+      "currency": "USD",
+      "file_path": "/Users/emadn/Projects/rag-frontend/backend/data/doc_1.txt",
+      "created_at": "2025-09-18T00:19:41.759374"
+    },
+    "doc_0543394d": {
+      "doc_id": "doc_0543394d",
+      "canonical_url": "file:///Users/emadn/Projects/rag-frontend/backend/data/doc_2.txt",
+      "domain": "local",
+      "doc_type": "disclosure",
+      "language": "en",
+      "title": "Bank Account Fees",
+      "categories": [
+        "Banking",
+        "Fees",
+        "Checking Accounts",
+        "Savings Accounts"
+      ],
+      "product_entities": [
+        "Advantage SafeBalance Banking for Family Banking",
+        "Advantage SafeBalance Banking",
+        "Advantage Plus Banking",
+        "Advantage Relationship Banking",
+        "Advantage Savings",
+        "Featured CD/IRA",
+        "Fixed Term CD/IRA",
+        "Flexible CD/IRA",
+        "Regular Checking",
+        "Regular Savings",
+        "Advantage with Tiered Interest Checking",
+        "Advantage Regular Checking",
+        "Senior Economy Checking",
+        "Money Market Savings",
+        "Platinum Money Market Savings",
+        "Preferred Rewards"
+      ],
+      "authority_score": 0.75,
+      "geo_scope": "US",
+      "currency": "USD",
+      "file_path": "/Users/emadn/Projects/rag-frontend/backend/data/doc_2.txt",
+      "created_at": "2025-09-18T00:19:45.596977"
+    },
+    "doc_c145976d": {
+      "doc_id": "doc_c145976d",
+      "canonical_url": "https://promotions.bankofamerica.com/preferredrewards/en",
+      "domain": "promotions.bankofamerica.com",
+      "doc_type": "promo",
+      "language": "en",
+      "title": "Bank of America Preferred Rewards Program",
+      "categories": [
+        "Banking",
+        "Rewards Program",
+        "Financial Services"
+      ],
+      "product_entities": [
+        "Bank of America Preferred Rewards Program",
+        "Gold",
+        "Platinum",
+        "Diamond"
+      ],
+      "authority_score": 0.7,
+      "geo_scope": "US",
+      "currency": "USD",
+      "file_path": "/path/to/preferred_rewards.txt",
+      "created_at": "2025-09-18T00:20:19.203887"
+    }
+  }
+}

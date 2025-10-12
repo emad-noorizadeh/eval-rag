@@ -1,0 +1,24 @@
+{
+  "generated_at": "2025-09-10T16:18:38.142210",
+  "total_files": 4,
+  "files": [
+    {
+      "filename": "doc_1_hybrid_metadata.json",
+      "extraction_method": "hybrid",
+      "processing_time": 2.241151,
+      "confidence": 0.9,
+      "total_fields": 26,
+      "deterministic_fields": 13,
+      "semantic_fields": 13
+    },
+    {
+      "filename": "doc_2_hybrid_metadata.json",
+      "extraction_method": "hybrid",
+      "processing_time": 2.975114,
+      "confidence": 0.9,
+      "total_fields": 25,
+      "deterministic_fields": 13,
+      "semantic_fields": 12
+    }
+  ]
+}
