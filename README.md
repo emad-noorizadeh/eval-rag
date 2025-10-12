@@ -66,7 +66,28 @@ rag-frontend/
    pip install -r requirements.txt
    ```
 
-4. Start the FastAPI server:
+4. Set up models path (choose one method):
+
+   **Method A: Use default path**
+   ```bash
+   # Create default models directory
+   mkdir -p /Users/emadn/Projects/models
+   
+   # Download All-MiniLM model
+   python setup/minilm_loader.py
+   ```
+
+   **Method B: Use custom path**
+   ```bash
+   # Set custom models path
+   export MODELS_PATH="/path/to/your/models"
+   
+   # Create directory and download model
+   mkdir -p "$MODELS_PATH"
+   python setup/minilm_loader.py
+   ```
+
+5. Start the FastAPI server:
    ```bash
    python main.py
    ```
@@ -91,6 +112,29 @@ rag-frontend/
    ```
 
    The application will be available at `http://localhost:4000`
+
+## Quick Start
+
+### Complete Setup (Copy-Paste)
+
+**Backend:**
+```bash
+cd backend
+source /Users/emadn/Projects/pipven/bin/activate
+pip install -r requirements.txt
+mkdir -p /Users/emadn/Projects/models
+python setup/minilm_loader.py
+python main.py
+```
+
+**Frontend:**
+```bash
+cd frontend
+npm install
+echo "NEXT_PUBLIC_BACKEND_URL=http://localhost:9000" > .env.local
+echo "BACKEND_URL=http://localhost:9000" >> .env.local
+npm run dev
+```
 
 ## Usage
 
@@ -137,6 +181,112 @@ The backend uses the following default settings:
 - **Database**: ChromaDB with persistent storage
 - **Port**: 9000
 - **Host**: 0.0.0.0 (all interfaces)
+
+#### Models Path Configuration
+
+The system uses a configurable models path system instead of storing models in the repository.
+
+##### Default Models Path
+- **Default Location**: `/Users/emadn/Projects/models`
+- **Environment Variable**: `MODELS_PATH` (optional)
+
+##### Setting Up Models Path
+
+**Method 1: Use Default Path (Recommended)**
+```bash
+# Create the default models directory
+mkdir -p /Users/emadn/Projects/models
+
+# Download the All-MiniLM model
+cd backend
+python setup/minilm_loader.py
+```
+
+**Method 2: Custom Models Path**
+```bash
+# Set custom models directory
+export MODELS_PATH="/path/to/your/models"
+
+# Create the directory
+mkdir -p "$MODELS_PATH"
+
+# Download the All-MiniLM model
+cd backend
+python setup/minilm_loader.py
+```
+
+**Method 3: Environment Variable in .env**
+```bash
+# Add to backend/.env
+echo "MODELS_PATH=/path/to/your/models" >> backend/.env
+```
+
+##### Models Path Examples
+
+**Local Development:**
+```bash
+export MODELS_PATH="/Users/emadn/Projects/models"
+```
+
+**Production Server:**
+```bash
+export MODELS_PATH="/opt/rag-system/models"
+```
+
+**Docker/Container:**
+```bash
+export MODELS_PATH="/app/models"
+```
+
+**Shared Network Storage:**
+```bash
+export MODELS_PATH="/mnt/shared/models"
+```
+
+##### Downloading All-MiniLM Model
+
+The system will automatically download the All-MiniLM model if not found locally:
+
+```bash
+cd backend
+python setup/minilm_loader.py
+```
+
+This will:
+1. Download `sentence-transformers/all-MiniLM-L6-v2` from HuggingFace
+2. Save it to your configured models path
+3. Verify the model was saved correctly
+
+##### Model Loading Behavior
+
+- **Local Model Found**: Uses local model from `MODELS_PATH`
+- **Local Model Missing**: Falls back to HuggingFace download
+- **Download Failed**: Uses HuggingFace model directly (slower)
+
+##### Verifying Models Setup
+
+```bash
+# Check models path configuration
+cd backend
+python -c "from utils.models_path import get_model_info; import json; print(json.dumps(get_model_info(), indent=2))"
+
+# Test model loading
+python -c "from utils.metric_utils import _maybe_load_embedder; model = _maybe_load_embedder(); print('Model loaded:', model is not None)"
+```
+
+##### Troubleshooting Models Path
+
+**Problem**: Model not found locally
+**Solution**: Run `python setup/minilm_loader.py` to download the model
+
+**Problem**: Permission denied creating models directory
+**Solution**: Ensure write permissions to the models path directory
+
+**Problem**: Model loading fails
+**Solution**: Check that the models directory contains the `all-MiniLM-L6-v2` folder
+
+**Problem**: Slow model loading
+**Solution**: Ensure the model is downloaded locally rather than using HuggingFace fallback
 
 ### Frontend Configuration
 
