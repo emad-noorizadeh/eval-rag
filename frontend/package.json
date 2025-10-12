@@ -3,10 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack -p 4000",
-    "build": "next build --turbopack",
-    "start": "next start",
-    "lint": "eslint"
+    "dev": "NEXT_TELEMETRY_DISABLED=1 next dev --turbopack -p 4000",
+    "build": "NEXT_TELEMETRY_DISABLED=1 next build --turbopack",
+    "start": "NEXT_TELEMETRY_DISABLED=1 next start",
+    "lint": "eslint",
+    "disable-telemetry": "node disable-telemetry.js",
+    "postinstall": "node disable-telemetry.js"
   },
   "dependencies": {
     "react": "19.1.0",
