@@ -3,7 +3,7 @@
  * Author: Emad Noorizadeh
  */
 
-const API_BASE_URL = 'http://localhost:9000';
+import { API_BASE_URL, API_ENDPOINTS } from '../config/api';
 
 export interface SessionInfo {
     session_id: string;
@@ -44,7 +44,7 @@ class SessionService {
      */
     async createSession(request?: SessionCreateRequest): Promise<SessionCreateResponse> {
         try {
-            const response = await fetch(`${API_BASE_URL}/sessions`, {
+            const response = await fetch(API_ENDPOINTS.SESSIONS, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -91,7 +91,7 @@ class SessionService {
         if (!id) return null;
 
         try {
-            const response = await fetch(`${API_BASE_URL}/sessions/${id}`);
+            const response = await fetch(`${API_ENDPOINTS.SESSIONS}/${id}`);
 
             if (response.status === 404) {
                 // Session not found or expired - clear everything
@@ -119,7 +119,7 @@ class SessionService {
         if (!id) return null;
 
         try {
-            const response = await fetch(`${API_BASE_URL}/sessions/${id}/extend`, {
+            const response = await fetch(API_ENDPOINTS.SESSION_EXTEND(id), {
                 method: 'POST',
             });
 
@@ -154,7 +154,7 @@ class SessionService {
         if (!id) return false;
 
         try {
-            const response = await fetch(`${API_BASE_URL}/sessions/${id}`, {
+            const response = await fetch(`${API_ENDPOINTS.SESSIONS}/${id}`, {
                 method: 'DELETE',
             });
 
