@@ -25,6 +25,7 @@ import hashlib
 from datetime import datetime
 from llama_index.core import SimpleDirectoryReader, VectorStoreIndex, Document
 from llama_index.core.node_parser import SentenceSplitter
+from llama_index.core.settings import Settings
 # Settings import removed - using direct component passing instead
 from model_manager import ModelManager
 from config.database_config import DatabaseConfig
@@ -35,27 +36,65 @@ from processors.enhanced_document_processor import EnhancedDocumentProcessor as 
 from processors.llm_metadata_extractor import HybridMetadataExtractor
 from utils.metadata_storage import MetadataStorage
 
-try:
-    import tiktoken
-except Exception:
-    tiktoken = None
+# Tokenizer functionality removed - using word-count-based chunking only
 
-def _get_encoder(name: str = "cl100k_base"):
-    """Get tokenizer encoder - use same tokenizer as embedding model"""
-    if tiktoken is not None:
-        try:
-            return tiktoken.get_encoding(name).encode
-        except Exception:
-            pass
-    # crude fallback; still guarantees "token" behavior is at least consistent
-    return lambda s: s.split()
+# Disable default tokenizer in LlamaIndex settings
+def _disable_llamaindex_tokenizer():
+    """Disable the default tokenizer in LlamaIndex to prevent tiktoken usage"""
+    try:
+        # Set a dummy tokenizer that doesn't require web access
+        def dummy_tokenizer(text: str) -> List[int]:
+            return list(range(len(text.split())))
+        
+        # Override the default tokenizer
+        Settings.tokenizer = dummy_tokenizer
+        print("✅ Disabled LlamaIndex default tokenizer")
+    except Exception as e:
+        print(f"⚠️  Could not disable LlamaIndex tokenizer: {e}")
+
+# Call this at module level
+_disable_llamaindex_tokenizer()
+
+def _get_word_count_splitter(chunk_size: int, chunk_overlap: int):
+    """Get a word-count-based splitter instead of tokenizer"""
+    def word_count_split(text: str) -> List[str]:
+        """Split text by word count instead of tokens"""
+        if not text:
+            return []
+        
+        words = text.split()
+        if len(words) <= chunk_size:
+            return [text]
+        
+        chunks = []
+        start = 0
+        
+        while start < len(words):
+            # Calculate end position with overlap
+            end = min(start + chunk_size, len(words))
+            
+            # Get chunk text
+            chunk_words = words[start:end]
+            chunk_text = " ".join(chunk_words)
+            chunks.append(chunk_text)
+            
+            # Move start position with overlap
+            start = end - chunk_overlap
+            if start >= len(words):
+                break
+        
+        return chunks
+    
+    return word_count_split
+
+# Configurable encoder removed - using word-count-based chunking only
 
 def _token_hist(name: str, texts: List[str], encode):
     """Log token histogram for observability"""
     if not texts:
         print(f"{name}: (no chunks)")
         return
-    sizes = [len(encode(t)) for t in texts]
+    sizes = [len(t.split()) for t in texts]
     print(f"{name} tokens — min:{min(sizes)}, max:{max(sizes)}, avg:{sum(sizes)/len(sizes):.1f}, n={len(sizes)}")
 
 class IndexBuilder:
@@ -74,14 +113,50 @@ class IndexBuilder:
         db_path = db_path or get_database_path()
         self.db_config = DatabaseConfig(db_path=db_path, collection_name=self.collection_name)
         
-        # Embedder & tokenizer-aware splitter (=> token budgets, not chars)
+        # Embedder & configurable splitter
         self.embed_model = self.model_manager.get_embedding_model()
-        encode = _get_encoder("cl100k_base")
-        self.node_parser = SentenceSplitter(
-            chunk_size=self.chunk_size,
-            chunk_overlap=self.chunk_overlap,
-            tokenizer=encode,
-        )
+        
+        # Use SentenceSplitter by default (no tokenizer needed)
+        use_sentence_splitter = get_config("chunking", "use_sentence_splitter")
+        if use_sentence_splitter is None:  # Default to True if not set
+            use_sentence_splitter = True
+        
+        if use_sentence_splitter:
+            # Use LlamaIndex SentenceSplitter (no tokenizer needed)
+            self.node_parser = SentenceSplitter(
+                chunk_size=self.chunk_size,
+                chunk_overlap=self.chunk_overlap
+            )
+            print(f"✅ Using SentenceSplitter chunking (chunk_size: {self.chunk_size}, overlap: {self.chunk_overlap})")
+        else:
+            # Use word-count-based splitting as fallback
+            from utils.chunking_utils import get_word_count_splitter
+            
+            word_count_ratio = get_config("chunking", "word_count_ratio") or 0.75
+            word_chunk_size = int(self.chunk_size * word_count_ratio)
+            word_chunk_overlap = int(self.chunk_overlap * word_count_ratio)
+            
+            # Create a custom splitter that uses word count
+            from llama_index.core.node_parser.interface import MetadataAwareTextSplitter
+            
+            class WordCountSplitter(MetadataAwareTextSplitter):
+                def __init__(self, chunk_size: int, chunk_overlap: int, **kwargs):
+                    super().__init__(**kwargs)
+                    self._chunk_size = chunk_size
+                    self._chunk_overlap = chunk_overlap
+                
+                def split_text(self, text: str) -> List[str]:
+                    return get_word_count_splitter(self._chunk_size, self._chunk_overlap)(text)
+                
+                def split_text_metadata_aware(self, text: str, metadata: dict = None, **kwargs) -> List[str]:
+                    """Split text with metadata awareness (required by base class)"""
+                    return self.split_text(text)
+            
+            self.node_parser = WordCountSplitter(
+                chunk_size=word_chunk_size,
+                chunk_overlap=word_chunk_overlap
+            )
+            print(f"✅ Using word-count-based chunking (chunk_size: {word_chunk_size} words, ratio: {word_count_ratio})")
         
         # processors (simplified)
         self.document_processor = DocumentProcessor(get_config)
@@ -127,9 +202,26 @@ class IndexBuilder:
             recursive = self.document_processor.should_use_recursive()
             extract_metadata = self.document_processor.should_extract_metadata()
 
+            # Get filtered document files (excludes .DS_Store and other system files)
+            from utils.rag_utils import get_document_files
+            document_files = get_document_files(folder_path, file_extensions)
+            
+            if not document_files:
+                print(f"⚠️  No supported documents found in {folder_path}")
+                return {
+                    "success": False,
+                    "message": "No supported documents found",
+                    "documents_processed": 0,
+                    "chunks_created": 0
+                }
+            
+            print(f"📄 Found {len(document_files)} documents to process:")
+            for doc_file in document_files:
+                print(f"  - {doc_file.name}")
+            
+            # Load documents using SimpleDirectoryReader with file list
             reader = SimpleDirectoryReader(
-                input_dir=str(folder_path),
-                recursive=recursive,
+                input_files=[str(f) for f in document_files],
                 file_metadata=create_file_metadata_function()
             )
             documents = reader.load_data()
@@ -178,7 +270,10 @@ class IndexBuilder:
             print(f"Splitter produced {len(nodes)} nodes")
 
             # 2) Assign stable IDs + enrich metadata BEFORE insertion
-            encode = _get_encoder("cl100k_base")
+            # Use simple word count instead of tokenizer
+            def word_count_encoder(text: str) -> int:
+                return len(text.split())
+            
             for i, n in enumerate(nodes):
                 src = (n.metadata or {}).get("file_name") or (n.metadata or {}).get("source") or f"doc_{i}"
                 content_hash = hashlib.sha1((n.text or "").encode("utf-8")).hexdigest()[:8]
@@ -189,7 +284,7 @@ class IndexBuilder:
                     "source": src,
                     "chunk_id": stable_id,
                     "doc_id": n.metadata.get("doc_id") or src,
-                    "token_count": len(encode(n.text or "")),
+                    "word_count": word_count_encoder(n.text or ""),
                     "first_line": (n.text or "").splitlines()[0][:160] if (n.text or "").strip() else ""
                 })
 
@@ -209,7 +304,7 @@ class IndexBuilder:
             print(f"Chroma collection vectors: {collection_size}")
 
             # Optional: quick visibility
-            _token_hist("Chunk", [n.text for n in nodes if getattr(n, "text", None)], _get_encoder("cl100k_base"))
+            _token_hist("Chunk", [n.text for n in nodes if getattr(n, "text", None)], word_count_encoder)
 
             # Chunk IDs and metadata are already set before insertion - no post-processing needed
             
@@ -269,10 +364,27 @@ class IndexBuilder:
             # Get configuration options
             recursive = self.document_processor.should_use_recursive()
             
-            # Use LlamaIndex SimpleDirectoryReader with enhanced options
+            # Get filtered document files (excludes .DS_Store and other system files)
+            from utils.rag_utils import get_document_files
+            document_files = get_document_files(folder_path, file_extensions)
+            
+            if not document_files:
+                print(f"⚠️  No supported documents found in {folder_path}")
+                return {
+                    "success": False,
+                    "message": "No supported documents found",
+                    "documents_processed": 0,
+                    "chunks_created": 0,
+                    "enhanced_metadata": {}
+                }
+            
+            print(f"📄 Found {len(document_files)} documents to process:")
+            for doc_file in document_files:
+                print(f"  - {doc_file.name}")
+            
+            # Use LlamaIndex SimpleDirectoryReader with filtered file list
             reader = SimpleDirectoryReader(
-                input_dir=str(folder_path),
-                recursive=recursive,
+                input_files=[str(f) for f in document_files],
                 file_metadata=create_file_metadata_function()
             )
             documents = reader.load_data()
@@ -357,7 +469,9 @@ class IndexBuilder:
         nodes = self.node_parser.get_nodes_from_documents([document])
         
         # Assign stable IDs and metadata
-        encode = _get_encoder("cl100k_base")
+        def word_count_encoder(text: str) -> int:
+            return len(text.split())
+        
         for i, n in enumerate(nodes):
             # For uploaded files, use saved_filename if available, otherwise file_name or source
             src = (n.metadata or {}).get("saved_filename") or (n.metadata or {}).get("file_name") or (n.metadata or {}).get("source") or f"doc_{i}"
@@ -369,7 +483,7 @@ class IndexBuilder:
                 "source": src,
                 "chunk_id": stable_id,
                 "doc_id": n.metadata.get("doc_id") or src,
-                "token_count": len(encode(n.text or "")),
+                "word_count": word_count_encoder(n.text or ""),
                 "first_line": (n.text or "").splitlines()[0][:160] if (n.text or "").strip() else ""
             })
         
@@ -480,14 +594,47 @@ class IndexBuilder:
         if chunk_overlap is not None:
             self.chunk_overlap = int(chunk_overlap)
 
-        encode = _get_encoder("cl100k_base")
-        self.node_parser = SentenceSplitter(
-            chunk_size=self.chunk_size,
-            chunk_overlap=self.chunk_overlap,
-            tokenizer=encode,
-        )
-
-        print(f"✓ Chunking parameters updated: size={self.chunk_size}, overlap={self.chunk_overlap}")
+        # Check which splitter to use
+        use_sentence_splitter = get_config("chunking", "use_sentence_splitter")
+        if use_sentence_splitter is None:
+            use_sentence_splitter = True
+        
+        if use_sentence_splitter:
+            # Use SentenceSplitter
+            self.node_parser = SentenceSplitter(
+                chunk_size=self.chunk_size,
+                chunk_overlap=self.chunk_overlap
+            )
+            print(f"✓ Chunking parameters updated: size={self.chunk_size}, overlap={self.chunk_overlap}")
+            print(f"✓ Using SentenceSplitter chunking")
+        else:
+            # Use word-count-based splitter
+            word_count_ratio = get_config("chunking", "word_count_ratio") or 0.75
+            word_chunk_size = int(self.chunk_size * word_count_ratio)
+            word_chunk_overlap = int(self.chunk_overlap * word_count_ratio)
+            
+            from llama_index.core.node_parser.interface import MetadataAwareTextSplitter
+            from utils.chunking_utils import get_word_count_splitter
+            
+            class WordCountSplitter(MetadataAwareTextSplitter):
+                def __init__(self, chunk_size: int, chunk_overlap: int, **kwargs):
+                    super().__init__(**kwargs)
+                    self._chunk_size = chunk_size
+                    self._chunk_overlap = chunk_overlap
+                
+                def split_text(self, text: str) -> List[str]:
+                    return get_word_count_splitter(self._chunk_size, self._chunk_overlap)(text)
+                
+                def split_text_metadata_aware(self, text: str, metadata: dict = None, **kwargs) -> List[str]:
+                    return self.split_text(text)
+            
+            self.node_parser = WordCountSplitter(
+                chunk_size=word_chunk_size,
+                chunk_overlap=word_chunk_overlap
+            )
+            print(f"✓ Chunking parameters updated: size={self.chunk_size}, overlap={self.chunk_overlap}")
+            print(f"✓ Word-count-based chunking: {word_chunk_size} words, ratio: {word_count_ratio}")
+        
         print("ℹ Existing chunks in Chroma are unchanged; call rebuild_index() to re-chunk everything.")
     
     def get_chunking_config(self) -> Dict[str, Any]:

@@ -288,10 +288,19 @@ def validate_document_folder(folder_path: Path) -> None:
 
 
 def get_document_files(folder_path: Path, file_extensions: List[str]) -> List[Path]:
-    """Get list of document files in the folder"""
+    """Get list of document files in the folder, excluding system files"""
     files = []
+    
+    # System files to exclude
+    excluded_files = {'.DS_Store', 'Thumbs.db', 'desktop.ini', '.gitkeep', '.gitignore'}
+    
     for ext in file_extensions:
-        files.extend(folder_path.glob(f"**/*{ext}"))
+        for file_path in folder_path.glob(f"**/*{ext}"):
+            # Skip system files and hidden files (except those explicitly allowed)
+            if file_path.name in excluded_files or file_path.name.startswith('.'):
+                continue
+            files.append(file_path)
+    
     return files
 
 

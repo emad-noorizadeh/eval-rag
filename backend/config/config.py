@@ -142,6 +142,14 @@ class SystemConfig:
                 "rate_limit_per_minute": 100,
                 "allowed_ips": [],
                 "enable_cors": True
+            },
+            
+            # Offline Mode Configuration
+            "offline": {
+                "enabled": False,
+                "use_local_tokenizer": True,
+                "disable_web_downloads": True,
+                "local_models_only": True
             }
         }
     

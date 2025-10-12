@@ -288,6 +288,70 @@ python -c "from utils.metric_utils import _maybe_load_embedder; model = _maybe_l
 **Problem**: Slow model loading
 **Solution**: Ensure the model is downloaded locally rather than using HuggingFace fallback
 
+#### Offline Mode Configuration
+
+For servers without internet access, the system supports complete offline operation.
+
+##### Enable Offline Mode
+
+**Method 1: Automatic Setup**
+```bash
+cd backend
+python enable_offline_mode.py
+```
+
+**Method 2: Manual Configuration**
+```bash
+# Set environment variables
+export OFFLINE_MODE=true
+export TIKTOKEN_CACHE_DIR=./tokenizer_cache
+export HF_HUB_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
+export SENTENCE_TRANSFORMERS_HOME=./models
+export DISABLE_WEB_DOWNLOADS=true
+export LOCAL_MODELS_ONLY=true
+
+# Create .env file
+echo "OFFLINE_MODE=true" > .env
+echo "TIKTOKEN_CACHE_DIR=./tokenizer_cache" >> .env
+echo "HF_HUB_OFFLINE=1" >> .env
+echo "TRANSFORMERS_OFFLINE=1" >> .env
+echo "SENTENCE_TRANSFORMERS_HOME=./models" >> .env
+echo "DISABLE_WEB_DOWNLOADS=true" >> .env
+echo "LOCAL_MODELS_ONLY=true" >> .env
+```
+
+##### Offline Mode Features
+
+- **Local Tokenizer**: Uses word-based tokenization instead of web downloads
+- **No Internet Required**: All functionality works without internet access
+- **Cached Models**: Uses locally downloaded models only
+- **Telemetry Disabled**: No external data collection
+- **URL Guardrail**: Blocks all external requests
+
+##### Offline Mode Setup Checklist
+
+- [ ] Download all required models locally
+- [ ] Run `python enable_offline_mode.py`
+- [ ] Verify `.env` file created with offline settings
+- [ ] Test tokenizer: `python local_tokenizer.py`
+- [ ] Start system: `python main.py`
+- [ ] Verify no external requests in logs
+
+##### Offline Mode Troubleshooting
+
+**Problem**: System still tries to download from web
+**Solution**: Ensure `OFFLINE_MODE=true` is set in environment
+
+**Problem**: Tokenizer errors
+**Solution**: Check that `local_tokenizer.py` is working correctly
+
+**Problem**: Model loading fails
+**Solution**: Ensure all models are downloaded to local models directory
+
+**Problem**: Performance issues
+**Solution**: Local tokenizer may be slower than tiktoken, but works offline
+
 ### Frontend Configuration
 
 #### Backend URL Configuration

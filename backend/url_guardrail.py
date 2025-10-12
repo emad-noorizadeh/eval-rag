@@ -43,7 +43,6 @@ class URLGuardrail:
         self.allowed_domains: Set[str] = {
             # Essential APIs only
             "api.openai.com",
-            "openaipublic.blob.core.windows.net",  # OpenAI tokenizer files
             "api.langgraph.com",
             "api.chroma.ai",
             "localhost",
@@ -59,8 +58,6 @@ class URLGuardrail:
             "/v1/models",
             "/v1/completions",
 
-            # OpenAI tokenizer files
-            "/encodings/cl100k_base.tiktoken",
 
             # LangGraph API paths (if any)
             "/api/v1/",
@@ -243,9 +240,6 @@ class URLGuardrail:
                 self.logger.warning(f"Blocked domain: {domain}")
                 return False
             
-            # Allow OpenAI tokenizer files specifically
-            if domain == "openaipublic.blob.core.windows.net" and path.startswith("/encodings/"):
-                return True
             
             # Check if domain contains blocked keywords
             for keyword in self.blocked_keywords:
