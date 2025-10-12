@@ -2,7 +2,7 @@
 
 A web interface for testing and evaluating Retrieval-Augmented Generation (RAG) systems using Next.js frontend and FastAPI backend with ChromaDB for vector storage.
 
-**Author:** Emad Noorizadeh
+**Author:** [username]
 
 ## Features
 
@@ -58,7 +58,7 @@ rag-frontend/
 
 2. Activate your virtual environment:
    ```bash
-   source /Users/emadn/Projects/pipven/bin/activate
+   source /path/to/your/venv/bin/activate
    ```
 
 3. Install dependencies:
@@ -71,7 +71,7 @@ rag-frontend/
    **Method A: Use default path**
    ```bash
    # Create default models directory
-   mkdir -p /Users/emadn/Projects/models
+   mkdir -p /home/[username]/models
    
    # Download All-MiniLM model
    python setup/minilm_loader.py
@@ -120,9 +120,9 @@ rag-frontend/
 **Backend:**
 ```bash
 cd backend
-source /Users/emadn/Projects/pipven/bin/activate
+source /path/to/your/venv/bin/activate
 pip install -r requirements.txt
-mkdir -p /Users/emadn/Projects/models
+mkdir -p /home/[username]/models
 python setup/minilm_loader.py
 python main.py
 ```
@@ -187,7 +187,7 @@ The backend uses the following default settings:
 The system uses a configurable models path system instead of storing models in the repository.
 
 ##### Default Models Path
-- **Default Location**: `/Users/emadn/Projects/models`
+- **Default Location**: `/home/[username]/models`
 - **Environment Variable**: `MODELS_PATH` (optional)
 
 ##### Setting Up Models Path
@@ -195,7 +195,7 @@ The system uses a configurable models path system instead of storing models in t
 **Method 1: Use Default Path (Recommended)**
 ```bash
 # Create the default models directory
-mkdir -p /Users/emadn/Projects/models
+mkdir -p /home/[username]/models
 
 # Download the All-MiniLM model
 cd backend
@@ -225,7 +225,7 @@ echo "MODELS_PATH=/path/to/your/models" >> backend/.env
 
 **Local Development:**
 ```bash
-export MODELS_PATH="/Users/emadn/Projects/models"
+export MODELS_PATH="/home/[username]/models"
 ```
 
 **Production Server:**
@@ -435,4 +435,4 @@ ChromaDB will automatically create a `chroma_db` directory in the backend folder
 
 This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENSE) file for details.
 
-Copyright 2025 Emad Noorizadeh
+Copyright 2025 [username]
