@@ -136,10 +136,101 @@ The backend uses the following default settings:
 - **Similarity Metric**: Cosine similarity
 - **Database**: ChromaDB with persistent storage
 - **Port**: 9000
+- **Host**: 0.0.0.0 (all interfaces)
 
 ### Frontend Configuration
 
-The frontend is configured to connect to the backend at `http://localhost:9000`. To change this, update the API URLs in the component files.
+#### Backend URL Configuration
+
+The frontend can be configured to connect to different backend URLs using environment variables.
+
+##### Method 1: Environment Variables (Recommended)
+
+Create or update `frontend/.env.local`:
+
+```bash
+# Backend API Configuration
+NEXT_PUBLIC_BACKEND_URL=http://localhost:9000
+BACKEND_URL=http://localhost:9000
+```
+
+##### Configuration Examples
+
+**Local Development:**
+```bash
+NEXT_PUBLIC_BACKEND_URL=http://localhost:9000
+BACKEND_URL=http://localhost:9000
+```
+
+**Production Server:**
+```bash
+NEXT_PUBLIC_BACKEND_URL=https://your-api-server.com
+BACKEND_URL=https://your-api-server.com
+```
+
+**Custom Port:**
+```bash
+NEXT_PUBLIC_BACKEND_URL=http://localhost:8080
+BACKEND_URL=http://localhost:8080
+```
+
+**Docker/Container:**
+```bash
+NEXT_PUBLIC_BACKEND_URL=http://backend:9000
+BACKEND_URL=http://backend:9000
+```
+
+##### Environment Variables Explained
+
+- **`NEXT_PUBLIC_BACKEND_URL`**: Used for client-side API calls (browser)
+- **`BACKEND_URL`**: Used for server-side API routes (Next.js API routes)
+
+##### Files That Support Environment Variables
+
+✅ **Already configured:**
+- `frontend/src/app/api/chat-config/route.ts`
+- `frontend/src/app/api/chunking-config/route.ts`
+- `frontend/src/app/api/documents/route.ts`
+- `frontend/src/app/api/documents/[filename]/content/route.ts`
+- `frontend/src/app/api/documents/[filename]/metadata/route.ts`
+- `frontend/src/services/sessionService.ts`
+- `frontend/src/config/api.ts`
+
+##### Quick Setup
+
+1. **Create environment file:**
+   ```bash
+   cd frontend
+   echo "NEXT_PUBLIC_BACKEND_URL=http://localhost:9000" > .env.local
+   echo "BACKEND_URL=http://localhost:9000" >> .env.local
+   ```
+
+2. **Restart development server:**
+   ```bash
+   npm run dev
+   ```
+
+##### Testing Configuration
+
+1. **Check environment variables:**
+   ```bash
+   cd frontend
+   echo $NEXT_PUBLIC_BACKEND_URL
+   ```
+
+2. **Test backend connection:**
+   ```bash
+   curl http://your-backend-url:9000/health
+   ```
+
+3. **Check browser console** for any connection errors
+
+##### Troubleshooting Backend URL Issues
+
+- **CORS Errors**: Ensure backend allows requests from your frontend domain
+- **Connection Refused**: Verify backend is running and accessible
+- **Environment Variables**: Always restart the development server after changing `.env.local`
+- **HTTPS**: Use HTTPS in production for security
 
 ## Development
 
@@ -160,11 +251,35 @@ ChromaDB will automatically create a `chroma_db` directory in the backend folder
 1. **CORS Errors**: Ensure the backend is running on port 9000 and the frontend on port 4000
 2. **Model Download**: The first run may take longer as it downloads the sentence transformer model
 3. **Port Conflicts**: Make sure ports 4000 and 9000 are available
+4. **Backend Connection Issues**: Check that `NEXT_PUBLIC_BACKEND_URL` and `BACKEND_URL` are correctly set
+5. **Environment Variables**: Restart the development server after changing `.env.local`
+
+### Backend URL Issues
+
+**Problem**: Frontend can't connect to backend
+**Solutions**:
+- Verify backend is running: `curl http://localhost:9000/health`
+- Check environment variables in `frontend/.env.local`
+- Ensure both `NEXT_PUBLIC_BACKEND_URL` and `BACKEND_URL` are set
+- Restart frontend development server after changing environment variables
+
+**Problem**: CORS errors in browser console
+**Solutions**:
+- Verify backend CORS settings in `backend/config/config.py`
+- Check that frontend URL is in allowed origins
+- Ensure backend is running on the correct host/port
+
+**Problem**: API routes return 500 errors
+**Solutions**:
+- Check `BACKEND_URL` environment variable for server-side API routes
+- Verify backend is accessible from the server-side context
+- Check backend logs for detailed error messages
 
 ### Logs
 
 - Backend logs are displayed in the terminal where you run `python main.py`
 - Frontend logs are available in the browser console and terminal
+- API route logs are available in the Next.js development server terminal
 
 ## License
 
