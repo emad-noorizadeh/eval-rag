@@ -28,7 +28,7 @@ langgraph-prebuilt>=0.6.4,<0.7.0
 langgraph-sdk>=0.2.6,<0.3.0
 
 # Document Processing
-PyMuPDF>=1.24.0
+pypdf>=4.0.0
 
 # NLP & Text Processing
 spacy>=3.7.0

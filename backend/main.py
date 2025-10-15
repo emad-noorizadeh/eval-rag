@@ -20,6 +20,7 @@ Author: Emad Noorizadeh
 # Load environment variables from .env file FIRST
 import os
 import sys
+from io import BytesIO
 
 BACKEND_DIR = os.path.dirname(__file__)
 PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
@@ -364,21 +365,25 @@ async def add_document_from_file(file: UploadFile = File(...), filename: str = F
         # Parse content based on file type
         file_extension = os.path.splitext(file.filename)[1].lower()
         
+        page_count = 1
         if file_extension == '.pdf':
-            # Parse PDF using PyMuPDF
+            # Parse PDF using pypdf
             try:
-                import fitz  # PyMuPDF
-                doc = fitz.open(stream=content, filetype="pdf")
+                from pypdf import PdfReader
+
+                pdf_reader = PdfReader(BytesIO(content))
                 text_parts = []
-                for page_num in range(len(doc)):
-                    page = doc.load_page(page_num)
-                    text_parts.append(page.get_text())
-                text = "\n\n".join(text_parts)
-                doc.close()
+                for page in pdf_reader.pages:
+                    page_text = page.extract_text() or ""
+                    text_parts.append(page_text)
+                text = "\n\n".join(text_parts).strip()
+                page_count = len(pdf_reader.pages)
             except ImportError:
-                raise HTTPException(status_code=500, detail="PDF parsing not available. Please install PyMuPDF: pip install PyMuPDF")
+                raise HTTPException(status_code=500, detail="PDF parsing not available. Please install pypdf: pip install pypdf")
             except Exception as e:
                 raise HTTPException(status_code=400, detail=f"Error parsing PDF: {str(e)}")
+            if not text:
+                raise HTTPException(status_code=400, detail="Unable to extract text from PDF")
         else:
             # For text files (.txt, .md), decode as UTF-8
             try:
@@ -394,7 +399,7 @@ async def add_document_from_file(file: UploadFile = File(...), filename: str = F
             "file_size": len(content),
             "content_type": file.content_type,
             "uploaded_at": datetime.now().isoformat(),
-            "page_count": len(text.split('\n\n')) if file_extension == '.pdf' else 1
+            "page_count": page_count if file_extension == '.pdf' else 1
         }
         
         # Save parsed text to data folder
