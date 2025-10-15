@@ -148,6 +148,32 @@ Together, these pieces give you a transparent router: you can inspect the state 
 
 ---
 
+## MiniLM Model Storage
+
+Sentence-transformer retrieval depends on a local copy of `sentence-transformers/all-MiniLM-L6-v2`. The loader (`backend/setup/minilm_loader.py`) saves the model under a configurable `MODELS_PATH` so the backend can run fully offline.
+
+1. **Choose a model directory**
+   - Default: `/Users/emadn/Projects/models`
+   - Override by exporting `MODELS_PATH=/absolute/path/to/models` (use `~` for home if you prefer; the loader expands it).  
+   - Whichever value you pick is persisted and used everywhere that calls `backend.utils.models_path`.
+
+2. **Download/initialize the model**
+   ```bash
+   source venv/bin/activate
+   python -m backend.setup.minilm_loader
+   ```
+   The script pulls `all-MiniLM-L6-v2`, ensures the models directory exists, and writes it to `<MODELS_PATH>/all-MiniLM-L6-v2/`.
+
+3. **Verify configuration**
+   ```bash
+   python -m backend.utils.models_path
+   ```
+   This prints the resolved models path, whether the directory exists, and if the MiniLM folder is present. The backend will automatically load MiniLM from that location when retrieval starts.
+
+Run the loader again any time you relocate models or want to refresh the cache.
+
+---
+
 ## Current Limitations & Next Steps
 
 - Router decisions still depend on hand-coded keyword maps for intent/subject detection. Scaling to new domains will require retraining or more adaptive classifiers.
