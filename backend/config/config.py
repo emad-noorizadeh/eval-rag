@@ -117,7 +117,9 @@ class SystemConfig:
                 "llm_model": "gpt-4o",
                 "temperature": 0.0,
                 "max_tokens": 1000,
-                "llm_max_retry": 1
+                "llm_max_retry": 1,
+                "base_url": "https://api.openai.com/v1",
+                "use_openai_url": False
             },
             
             # Logging Configuration - LOCAL ONLY, NO EXTERNAL TELEMETRY
@@ -193,6 +195,8 @@ class SystemConfig:
             "RAG_EMBEDDING_MODEL": ("models", "embedding_model"),
             "RAG_LLM_MODEL": ("models", "llm_model"),
             "RAG_LLM_MAX_RETRY": ("models", "llm_max_retry"),
+            "RAG_OPENAI_BASE_URL": ("models", "base_url"),
+            "RAG_USE_OPENAI_URL": ("models", "use_openai_url"),
             
             # Logging
             "RAG_LOG_LEVEL": ("logging", "level"),
@@ -207,7 +211,7 @@ class SystemConfig:
                     value = int(value)
                 elif key in ["temperature", "max_size_mb"]:
                     value = float(value)
-                elif key in ["enable_caching", "api_key_required", "enable_cors"]:
+                elif key in ["enable_caching", "api_key_required", "enable_cors", "use_openai_url"]:
                     value = value.lower() in ['true', '1', 'yes', 'on']
                 elif key == "cors_origins":
                     value = value.split(',')

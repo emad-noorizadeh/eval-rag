@@ -68,6 +68,15 @@ class ModelManager:
         self.embedding_model = None
         self.openai_client = None
         self.api_key = _resolve_api_key(openai_api_key)
+        self.openai_base_url = get_config("models", "base_url")
+        self.use_openai_url = bool(get_config("models", "use_openai_url") or False)
+        if self.use_openai_url:
+            if self.openai_base_url:
+                openai.base_url = self.openai_base_url
+                os.environ["OPENAI_BASE_URL"] = self.openai_base_url
+                print(f"✓ OpenAI base URL set to {self.openai_base_url}")
+            else:
+                print("⚠️ use_openai_url enabled but no base URL configured; falling back to default OpenAI endpoint.")
         if self.api_key:
             # Keep env in sync so downstream libs relying on os.getenv still work
             os.environ["OPENAI_API_KEY"] = self.api_key
@@ -85,10 +94,13 @@ class ModelManager:
             # Get embedding model from configuration
             embedding_model_name = get_config("models", "embedding_model")
             # Initialize embedding model for LlamaIndex
-            self.embedding_model = OpenAIEmbedding(
-                api_key=api_key,
-                model=embedding_model_name
-            )
+            embedding_kwargs = {
+                "api_key": api_key,
+                "model": embedding_model_name
+            }
+            if self.use_openai_url and self.openai_base_url:
+                embedding_kwargs["api_base"] = self.openai_base_url
+            self.embedding_model = OpenAIEmbedding(**embedding_kwargs)
             self.models['embedding'] = self.embedding_model
             print(f"✓ OpenAI Embedding model ({embedding_model_name}) loaded for LlamaIndex")
         except Exception as e:
@@ -97,7 +109,10 @@ class ModelManager:
         
         try:
             # Initialize OpenAI client for direct API calls
-            self.openai_client = openai.OpenAI(api_key=api_key)
+            client_kwargs = {"api_key": api_key}
+            if self.use_openai_url and self.openai_base_url:
+                client_kwargs["base_url"] = self.openai_base_url
+            self.openai_client = openai.OpenAI(**client_kwargs)
             self.models['openai'] = self.openai_client
             print("✓ OpenAI client initialized for direct API calls")
         except Exception as e:

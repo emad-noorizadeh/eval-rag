@@ -174,6 +174,26 @@ Run the loader again any time you relocate models or want to refresh the cache.
 
 ---
 
+## Interactive Configurator
+
+For quick setup without hand-editing `config.json`, use the interactive helper:
+
+```bash
+source venv/bin/activate
+python -m backend.setup.configurator
+```
+
+You will be prompted (optionally) to update:
+
+- **Custom OpenAI base URL** – toggles `models.use_openai_url` and sets `models.base_url` (and mirrors the choice to `.env` via `OPENAI_BASE_URL`).
+- **OpenAI API key** – stores the key in `config.json` and writes `OPENAI_API_KEY` into `.env` for local runs.
+- **MODELS_PATH** – updates `.env` so the MiniLM loader and retrieval stack use your preferred local models directory.
+- **Model defaults** – embedding/LLM model IDs, temperature, and max tokens all get written back to `config.json`.
+
+Press Enter to keep existing values; the script only overwrites settings you supply. After running it, restart the backend to pick up the new configuration.
+
+---
+
 ## Current Limitations & Next Steps
 
 - Router decisions still depend on hand-coded keyword maps for intent/subject detection. Scaling to new domains will require retraining or more adaptive classifiers.
