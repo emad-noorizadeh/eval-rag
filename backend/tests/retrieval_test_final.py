@@ -22,8 +22,8 @@ import sys
 from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from model_manager import ModelManager
-from index_builder import IndexBuilder
+from ..model_manager import ModelManager
+from ..index_builder import IndexBuilder
 
 def test_retrieval_comprehensive():
     """Comprehensive retrieval test with detailed results"""

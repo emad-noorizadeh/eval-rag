@@ -23,16 +23,23 @@ in the context-aware RAG system.
 import re
 from typing import List, Dict
 
-ACK_TOKENS = {"yes","y","yeah","yep","ok","okay","sure","that","this","it","right","correct","exactly","sounds good"}
+ACK_TOKENS = {"yes","y","yeah","yep","ok","okay","sure","right","correct","exactly","sounds good"}
 
 def is_ack_or_coref(text: str) -> bool:
     """Check if text is an acknowledgment or contains coreference"""
     t = text.strip().lower()
     if t in ACK_TOKENS:
         return True
-    # minimal coref cues - only if the text is short and contains coref pronouns
-    if len(t.split()) <= 3:  # Only for short phrases
-        return bool(re.search(r"\b(it|that|this|those|these|them|they|he|she)\b", t))
+    # minimal coref cues - only if the text is short and contains lightweight pronoun references
+    words = t.split()
+    if len(words) <= 3:  # Only for short phrases
+        if words and words[0] in {"that", "this", "those", "these"}:
+            if len(words) == 1:
+                return True
+            if len(words) == 2 and words[1] == "one":
+                return True
+        if any(tok in {"them", "they", "he", "she"} for tok in words):
+            return True
     return False
 
 def build_conversation_snippet(messages: List[Dict[str,str]], turns: int = 3) -> str:

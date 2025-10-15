@@ -26,8 +26,8 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from processors.hybrid_metadata_extractor import HybridMetadataExtractor
-from model_manager import ModelManager
-from config import get_config, set_config, get_data_folder
+from ..model_manager import ModelManager
+from ..config import get_config, set_config, get_data_folder
 
 def test_json_metadata_extraction():
     """Test JSON metadata extraction on data folder files"""

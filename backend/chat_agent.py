@@ -42,13 +42,15 @@ from datetime import datetime
 from dataclasses import dataclass
 from enum import Enum
 
-from model_manager import ModelManager
-from index_builder import IndexBuilder
-from rag import RAG
-from retrieval_service import RetrievalMethod, RetrievalConfig
-# from session_manager import SessionManager  # Avoid circular import
-from router_graph import build_router_app, AgentState
-from prompts import get_rag_simple_prompt
+from .model_manager import ModelManager
+from .index_builder import IndexBuilder
+from .rag import RAG
+from .retrieval_service import RetrievalMethod, RetrievalConfig
+# from .session_manager import SessionManager  # Avoid circular import
+from .prompts import get_rag_simple_prompt
+from .router_graph import SimpleRouterApp
+from .utils.conversation_utils import build_conversation_snippet
+from .utils.metric_utils import calculate_context_utilization_percentage
 
 
 class RoutingStrategy(Enum):
@@ -143,7 +145,6 @@ class ChatAgent:
         self.rag = RAG(model_manager, index_builder, config.retrieval_method)
         
         # Initialize routing strategy
-        self._router_app = None
         self._initialize_routing()
         
         print(f"✓ Chat agent initialized")
@@ -153,13 +154,8 @@ class ChatAgent:
     def _initialize_routing(self):
         """Initialize the routing strategy"""
         if self.config.routing_strategy == RoutingStrategy.INTELLIGENT:
-            # Use the current intelligent router with RAG
-            self._router_app = build_router_app(
-                self.model_manager,
-                self.rag
-            )
+            self._router_app = SimpleRouterApp(self)
         elif self.config.routing_strategy == RoutingStrategy.SIMPLE:
-            # Direct RAG without routing
             self._router_app = None
         else:
             raise ValueError(f"Unsupported routing strategy: {self.config.routing_strategy}")
@@ -226,7 +222,7 @@ class ChatAgent:
             if conversation_history is None:
                 conversation_history = []
             
-            # Route based on strategy
+        # Route based on strategy
             if self.config.routing_strategy == RoutingStrategy.INTELLIGENT:
                 return self._chat_with_router(message, session_id, conversation_history)
             elif self.config.routing_strategy == RoutingStrategy.SIMPLE:
@@ -259,80 +255,32 @@ class ChatAgent:
     
     def _chat_with_router(self, message: str, session_id: str, 
                          conversation_history: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Chat using the router strategy"""
-        # Get session and extract focus_hint
-        sess = self.session_manager.get_session(session_id)
-        focus_hint = getattr(sess, "focus_hint", "") if sess else ""
-        
-        # Prepare state for router
-        state = AgentState(
-            messages=conversation_history + [{"role": "user", "content": message}],
-            current_input=message,
-            session_id=session_id,
-            retrieval_results=[],
-            rag_response=None,
-            answer_type="unknown",
-            clarify_count=0,
-            rephrased_input="",
-            clarification_question="",
-            focus_hint=focus_hint,           # NEW
-            conversation_snippet=""          # will be set in process_input
-        )
-        
-        # Run router
-        result = self._router_app.invoke(state)
-        
-        # Persist focus hint if provided
-        focus_hint = result.get("focus_hint", "")
-        if focus_hint:
-            sess = self.session_manager.get_session(session_id)
-            if sess:
-                setattr(sess, "focus_hint", focus_hint)
-        
-        # Belt-and-suspenders: Persist focus_hint when user says "yes" (or other ack)
-        sess = self.session_manager.get_session(session_id)
-        if hasattr(sess, "focus_hint"):
-            # keep existing
-            pass
-        else:
-            # if router classified as clarification earlier, this 'yes' implies confirmation.
-            proposed = result.get("focus_hint", "")
-            if not proposed and "clarification" in (result.get("route_metrics", {}).get("route_decision", "")):
-                # best-effort: extract noun-ish head from last clarification if you want
-                proposed = ""
-            if proposed:
-                setattr(sess, "focus_hint", proposed)
-        
-        # Extract response
-        answer = result.get("answer", "I'm sorry, I couldn't process your request.")
-        rag_response = result.get("rag_response", {})
-        
-        # Extract detailed metrics from router state
-        detailed_metrics = self._extract_detailed_metrics(result)
-        
-        # Format response - use filtered chunks for sources if available, otherwise fall back to all retrieved
-        filtered_chunks = result.get("filtered_retrieved", result.get("retrieved", []))
-        response = {
-            "answer": answer,
+        """Chat using the streamlined intelligent routing strategy."""
+        session = self.session_manager.get_session(session_id)
+        if session is None:
+            raise ValueError("Invalid session")
+
+        state = dict(session.agent_state or {})
+        if "messages" not in state or not state.get("messages"):
+            state["messages"] = conversation_history.copy() if conversation_history else []
+
+        state.update({
             "session_id": session_id,
-            "timestamp": datetime.now().isoformat(),
-            "metrics": detailed_metrics,
-            "sources": self._extract_sources(filtered_chunks),
-            "retrieval_metadata": {
-                "method": self.config.retrieval_method.value,
-                "total_chunks": len(filtered_chunks),
-                "routing_strategy": self.config.routing_strategy.value
-            }
+            "user_message": message.strip(),
+        })
+
+        final_state = self._router_app.invoke(state)
+        response = final_state.get("response", {})
+
+        session.agent_state = {
+            "messages": final_state.get("messages", []),
+            "last_question": final_state.get("last_question", ""),
+            "awaiting_clarification": final_state.get("awaiting_clarification", False),
+            "clarify_count": final_state.get("clarify_count", 0),
+            "last_clarification": final_state.get("last_clarification", ""),
+            "topic_hint": final_state.get("topic_hint", ""),
         }
-        
-        # Add routing-specific metadata
-        if "rephrased_input" in result:
-            response["rephrased_input"] = result["rephrased_input"]
-        if "clarification_question" in result:
-            response["clarification_question"] = result["clarification_question"]
-        if "generated_by" in result:
-            response["generated_by"] = result["generated_by"]
-        
+
         return response
     
     def _chat_simple(self, message: str, session_id: str, 
@@ -340,13 +288,23 @@ class ChatAgent:
         """Simple chat without routing"""
         # Use RAG directly
         rag_response = self.rag.query(message, n_results=self.config.retrieval_top_k)
-        
+
         # Create simple detailed metrics for simple routing
         simple_metrics = self._create_simple_metrics(message, rag_response, conversation_history)
-        
+
+        retrieval_error = getattr(self.rag, "last_retrieval_error", None)
+        answer = rag_response.get("answer", "")
+        if retrieval_error:
+            answer = (
+                "I ran into a connection issue while retrieving information. "
+                "Please try again in a moment."
+            )
+            simple_metrics.setdefault("route_metrics", {})["retrieval_error"] = retrieval_error
+            self.rag.last_retrieval_error = None
+
         # Format response
         return {
-            "answer": rag_response["answer"],
+            "answer": answer,
             "session_id": session_id,
             "timestamp": datetime.now().isoformat(),
             "metrics": simple_metrics,
@@ -358,95 +316,97 @@ class ChatAgent:
             }
         }
     
-    def _extract_detailed_metrics(self, router_result: Dict[str, Any]) -> Dict[str, Any]:
-        """Extract detailed metrics from router state"""
-        # Get the original user message
-        messages = router_result.get("messages", [])
-        original_question = ""
-        if messages:
-            for msg in reversed(messages):
-                if msg.get("role") == "user":
-                    original_question = msg.get("content", "")
-                    break
-        
-        # Extract basic metrics from RAG response
-        rag_response = router_result.get("rag_response", {})
+    def _create_intelligent_metrics(
+        self,
+        original_question: str,
+        effective_question: str,
+        retrieved_chunks: List[Dict[str, Any]],
+        rag_response: Dict[str, Any],
+        conversation_length: int,
+        avg_score: float,
+        threshold: float,
+        awaiting_clarification: bool,
+        clarify_count: int,
+        last_clarification: str
+    ) -> Dict[str, Any]:
+        """Create detailed metrics for the streamlined intelligent router."""
         basic_metrics = self._extract_metrics(rag_response)
+        response_metrics = rag_response.get("metrics", {})
+        scores = [chunk.get("score", 0.0) for chunk in retrieved_chunks]
+        max_score = max(scores) if scores else 0.0
+        min_score = min(scores) if scores else 0.0
+        context_length = sum(len(chunk.get("text", "")) for chunk in retrieved_chunks)
+        sources = self._extract_sources(retrieved_chunks)
         
-        # Context utilization should be in the RAG response metrics
-        # No need to override since it's already calculated in the RAG response
+        clarifying_question = response_metrics.get("clarifying_question", "")
+        abstained = bool(basic_metrics.get("abstained", True))
+        if abstained and clarifying_question:
+            decision = "clarification"
+        elif abstained:
+            decision = "abstain"
+        else:
+            decision = "answer"
         
-        # Get filtered chunks for metrics
-        filtered_chunks = router_result.get("filtered_retrieved", router_result.get("retrieved", []))
-        
-        # Extract detailed node metrics
         detailed_metrics = {
-            **basic_metrics,  # Include basic metrics
-            
-            # Add chunks retrieved for debug panel - use filtered chunks if available
-            "chunks_retrieved": self._extract_sources(filtered_chunks),
-            
-            # Ingest node metrics
+            **basic_metrics,
+            "chunks_retrieved": sources,
             "ingest_metrics": {
                 "original_question": original_question,
-                "processed_question": router_result.get("rephrased_question", original_question),
-                "is_clarification_response": router_result.get("answer_type") == "clarification",
-                "conversation_length": len(messages),
-                "rephrased": router_result.get("rephrased_question", "") != original_question,
-                "summary": f"Processed {len(messages)} messages"
+                "processed_question": effective_question,
+                "is_clarification_response": decision == "clarification",
+                "conversation_length": conversation_length,
+                "rephrased": original_question.strip() != effective_question.strip(),
+                "summary": f"Processed {conversation_length} messages"
             },
-            
-            # Retrieve node metrics - use filtered chunks for display
             "retrieve_metrics": {
-                "question": router_result.get("rephrased_question", ""),
-                "top_k": router_result.get("top_k", 0),
-                "chunks_retrieved": len(filtered_chunks),
-                "avg_similarity": router_result.get("avg_score", 0.0),
-                "max_similarity": max([chunk.get("score", 0) for chunk in filtered_chunks], default=0.0),
-                "min_similarity": min([chunk.get("score", 0) for chunk in filtered_chunks], default=0.0),
-                "chunk_scores": [chunk.get("score", 0) for chunk in filtered_chunks],
-                "context_length": len(router_result.get("context", "")),
-                "valid_chunk_ids": router_result.get("valid_chunk_ids", [])
+                "question": effective_question,
+                "top_k": self.config.retrieval_top_k,
+                "chunks_retrieved": len(retrieved_chunks),
+                "avg_similarity": avg_score,
+                "max_similarity": max_score,
+                "min_similarity": min_score,
+                "chunk_scores": scores,
+                "context_length": context_length,
+                "valid_chunk_ids": [chunk.get("chunk_id", "") or chunk.get("cid", "") for chunk in retrieved_chunks]
             },
-            
-            # Route node metrics - use filtered chunks for display
             "route_metrics": {
-                "retrieved_chunks": len(filtered_chunks),
-                "avg_similarity": router_result.get("avg_score", 0.0),
-                "threshold": router_result.get("threshold", 0.45),
-                "is_clarification_response": router_result.get("answer_type") == "clarification",
-                "route_decision": router_result.get("answer_type", "unknown"),
-                "scores": [chunk.get("score", 0) for chunk in filtered_chunks],
-                "above_threshold": router_result.get("avg_score", 0.0) >= router_result.get("threshold", 0.45)
+                "decision": decision,
+                "avg_similarity": avg_score,
+                "threshold": threshold,
+                "above_threshold": avg_score >= threshold,
+                "awaiting_clarification": awaiting_clarification,
+                "clarify_count": clarify_count,
+                "clarification_question": clarifying_question
             },
-            
-            # RAG node metrics
             "rag_metrics": {
-                "question": router_result.get("rephrased_question", ""),
-                "context_used": router_result.get("context", ""),
-                "response_generated": router_result.get("answer", ""),
-                "clarification_question": router_result.get("last_clarification", ""),
-                "confidence": basic_metrics.get("confidence", router_result.get("confidence", "Medium")),
-                "answer_type": basic_metrics.get("answer_type", router_result.get("answer_type", "unknown")),
+                "question": response_metrics.get("interpreted_question", effective_question),
+                "context_used": context_length,
+                "response_generated": rag_response.get("answer", ""),
+                "clarification_question": clarifying_question,
+                "confidence": basic_metrics.get("confidence", "Low"),
+                "answer_type": basic_metrics.get("answer_type", "unknown"),
                 "faithfulness": basic_metrics.get("faithfulness", 0.0),
                 "completeness": basic_metrics.get("completeness", 0.0),
                 "context_utilization": basic_metrics.get("context_utilization", "0%"),
                 "reasoning_notes": basic_metrics.get("reasoning_notes", ""),
                 "missing_information": basic_metrics.get("missing_information", []),
-                "reasoning": f"Generated response with {len(filtered_chunks)} chunks"
+                "reasoning": f"Generated response with {len(retrieved_chunks)} chunks"
             },
-            
-            # Clarify node metrics
             "clarify_metrics": {
-                "question": router_result.get("rephrased_question", ""),
-                "clarification_question": router_result.get("last_clarification", ""),
-                "clarify_count": router_result.get("clarify_count", 0),
-                "max_clarify": router_result.get("max_clarify", 2),
-                "reason": f"Asked clarification due to low similarity: {router_result.get('avg_score', 0.0):.3f} < {router_result.get('threshold', 0.45)}"
+                "clarification_question": clarifying_question,
+                "clarify_count": clarify_count,
+                "last_clarification": last_clarification,
+                "summary": "Awaiting user response" if awaiting_clarification else "No pending clarification"
             }
         }
-        
         return detailed_metrics
+
+    def _build_conversation_snippet(self, messages: List[Dict[str, Any]]) -> str:
+        return build_conversation_snippet(messages, turns=self.config.window_k)
+
+    @staticmethod
+    def _now() -> str:
+        return datetime.now().isoformat()
 
     def _create_simple_metrics(self, message: str, rag_response: Dict[str, Any], 
                               conversation_history: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -533,7 +493,30 @@ class ChatAgent:
                 "context_utilization": "0%"
             }
         
-        metrics = rag_response["metrics"]
+        metrics = dict(rag_response["metrics"])
+        
+        context_utilization = metrics.get("context_utilization")
+        if not isinstance(context_utilization, dict):
+            answer_text = (rag_response.get("answer") or metrics.get("answer") or "").strip()
+            sources = rag_response.get("sources") or []
+            context_snippets = [
+                (source.get("text") or "").strip()
+                for source in sources
+                if isinstance(source, dict) and source.get("text")
+            ]
+            if answer_text:
+                try:
+                    context_utilization = calculate_context_utilization_percentage(
+                        answer_text,
+                        context_snippets
+                    )
+                    metrics["context_utilization"] = context_utilization
+                except Exception as exc:
+                    print(f"Warning: failed to compute context utilization metrics: {exc}")
+                    context_utilization = context_utilization or "0%"
+            else:
+                context_utilization = context_utilization or "0%"
+
         return {
             "confidence": metrics.get("confidence", 0.0),
             "faithfulness": metrics.get("faithfulness_score", 0.0),  # RAG returns faithfulness_score
@@ -542,7 +525,7 @@ class ChatAgent:
             "answer_type": metrics.get("answer_type", "unknown"),
             "reasoning_notes": metrics.get("reasoning_notes", ""),
             "missing_information": metrics.get("missing_information", []),
-            "context_utilization": metrics.get("context_utilization", "0%")
+            "context_utilization": context_utilization
         }
     
     def _extract_sources(self, chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

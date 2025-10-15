@@ -21,9 +21,9 @@ import os
 import sys
 from datetime import datetime
 
-from model_manager import ModelManager
-from index_builder import IndexBuilder
-from rag import RAG
+from ..model_manager import ModelManager
+from ..index_builder import IndexBuilder
+from ..rag import RAG
 
 def test_rag_gold_tier():
     """Test RAG system with gold tier question"""

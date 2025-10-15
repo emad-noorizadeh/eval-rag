@@ -27,7 +27,7 @@ except Exception:
     OpenAIClient = None
 
 from ..utils.utils_json import coerce_json
-from answer_schema import AnswerSchema
+from .answer_schema import AnswerSchema
 
 PROMPT_TEMPLATE = (
     "You are a financial assistant.\n"

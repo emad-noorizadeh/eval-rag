@@ -18,16 +18,35 @@ Author: Emad Noorizadeh
 """
 
 # Load environment variables from .env file FIRST
-from dotenv import load_dotenv
-load_dotenv()
+import os
+import sys
+
+BACKEND_DIR = os.path.dirname(__file__)
+PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from dotenv import load_dotenv, find_dotenv
+
+# Ensure backend package is discoverable and load environment variables
+
+dotenv_path = find_dotenv()
+if dotenv_path:
+    load_dotenv(dotenv_path=dotenv_path)
+else:
+    load_dotenv()
+
+print(f"🔐 OPENAI_API_KEY detected: {bool(os.getenv('OPENAI_API_KEY'))}")
 
 # Disable all telemetry and external logging
-from disable_telemetry import (
-    disable_all_telemetry, 
-    configure_local_logging_only, 
+from .security import (
+    disable_all_telemetry,
+    configure_local_logging_only,
     disable_network_telemetry,
     disable_all_external_connections,
-    create_network_monitor
+    create_network_monitor,
+    block_external_requests,
+    create_url_monitor
 )
 disable_all_telemetry()
 configure_local_logging_only()
@@ -36,7 +55,6 @@ disable_all_external_connections()
 create_network_monitor()
 
 # Enable URL guardrail to block all external requests
-from url_guardrail import block_external_requests, create_network_monitor as create_url_monitor
 block_external_requests()
 create_url_monitor()
 
@@ -45,16 +63,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Union, Dict, Any
 import uvicorn
-import os
 from datetime import datetime
 
 # Import our modular components
-from model_manager import ModelManager
-from index_builder import IndexBuilder
-from rag import RAG
-from chat_agent import ChatAgent, ChatConfig, RetrievalMethod, RoutingStrategy
-from session_manager import session_manager
-from config import config, get_config
+from .model_manager import ModelManager
+from .index_builder import IndexBuilder
+from .rag import RAG
+from .chat_agent import ChatAgent, ChatConfig, RetrievalMethod, RoutingStrategy
+from .session_manager import session_manager
+from .config import config, get_config
 
 app = FastAPI(title="RAG API", version="1.0.0", description="RAG Testing Interface by Emad Noorizadeh")
 
@@ -66,7 +83,6 @@ config.print_config()
 model_manager = ModelManager()
 
 # Use basic IndexBuilder for semantic retrieval
-from index_builder import IndexBuilder
 index_builder = IndexBuilder(model_manager)
 
 rag = RAG(model_manager, index_builder)

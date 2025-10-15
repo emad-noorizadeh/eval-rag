@@ -1,502 +1,192 @@
 # RAG Testing Interface
 
-A web interface for testing and evaluating Retrieval-Augmented Generation (RAG) systems using Next.js frontend and FastAPI backend with ChromaDB for vector storage.
+Modern evaluation harness for Retrieval-Augmented Generation (RAG) systems. The repo ships with a Next.js frontend, FastAPI backend, persistent ChromaDB store, and a streamlined LangGraph router that combines retrieval gating with the guarded answer LLM to handle clarifications, routing, and abstention.
 
-**Author:** [username]
+---
 
-## Features
+## High-Level Capabilities
 
-- **Document Upload**: Add documents to the vector database with optional metadata
-- **Semantic Search**: Query documents using natural language with similarity scoring
-- **Document Management**: View, delete, and manage all stored documents
-- **Real-time Interface**: Modern, responsive UI built with Next.js and Tailwind CSS
-- **Local Storage**: All data stored locally using ChromaDB
+- **Document ingestion & semantic retrieval** – Index local text with OpenAI embeddings stored in Chroma, including automatic metadata extraction.
+- **Router-guided conversations** – A lightweight LangGraph state machine gates retrieval and lets the guarded answer LLM drive answer/clarify/abstain outcomes while keeping clarification state per session.
+- **Startup health checks** – Database initialization now validates embedding dimensionality and resets mismatched collections safely.
+- **API key resilience** – OpenAI credentials resolve from environment variables, config, or a local fallback file (`~/.openai_key`), so automation runs in clean shells.
+- **Schema repair** – Guarded answer responses are schema-validated; invalid JSON triggers an automatic repair prompt up to `models.llm_max_retry` times (default 1).
+- **Observability** – Consistent logging of router decisions, clarification counts, coverage metrics, and storage stats.
 
-## Tech Stack
+---
 
-### Frontend
-- Next.js 14 with TypeScript
-- Tailwind CSS for styling
-- React hooks for state management
-
-### Backend
-- FastAPI with Python
-- ChromaDB for vector storage
-- Sentence Transformers for embeddings
-- Uvicorn ASGI server
-
-## Project Structure
+## Repository Layout
 
 ```
-rag-frontend/
-├── frontend/                 # Next.js frontend application
-│   ├── src/
-│   │   ├── app/             # Next.js app directory
-│   │   └── components/      # React components
-│   └── package.json
-├── backend/                 # FastAPI backend application
-│   ├── main.py             # FastAPI application
-│   ├── requirements.txt    # Python dependencies
-│   └── chroma_db/          # ChromaDB data directory (created automatically)
-└── README.md
+frontend/                # Next.js 14 application
+backend/                 # FastAPI backend + router/agent
+├── main.py              # API entry point
+├── config/              # Config loader + Chroma safeguards
+├── router_graph.py      # Legacy router (kept for reference/tests)
+├── rag.py               # RAG answer generation pipeline
+├── utils/               # Helpers (conversation utils, metadata, etc.)
+└── scripts/             # CLI utilities (create/delete index, etc.)
+chroma_db/               # Persistent Chroma storage (generated)
+README.md
 ```
 
-## Setup Instructions
+---
 
-### Prerequisites
+## Backend Setup
 
-- Node.js 18+ and npm
-- Python 3.9+
-- Virtual environment (recommended)
-
-### Backend Setup
-
-1. Navigate to the backend directory:
-   ```bash
-   cd backend
-   ```
-
-2. Activate your virtual environment:
-   ```bash
-   source /path/to/your/venv/bin/activate
-   ```
-
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. Set up models path (choose one method):
-
-   **Method A: Use default path**
-   ```bash
-   # Create default models directory
-   mkdir -p /home/[username]/models
-   
-   # Download All-MiniLM model
-   python setup/minilm_loader.py
-   ```
-
-   **Method B: Use custom path**
-   ```bash
-   # Set custom models path
-   export MODELS_PATH="/path/to/your/models"
-   
-   # Create directory and download model
-   mkdir -p "$MODELS_PATH"
-   python setup/minilm_loader.py
-   ```
-
-5. Start the FastAPI server:
-   ```bash
-   python main.py
-   ```
-
-   The API will be available at `http://localhost:9000`
-
-### Frontend Setup
-
-1. Navigate to the frontend directory:
-   ```bash
-   cd frontend
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Start the development server:
-   ```bash
-   npm run dev
-   ```
-
-   The application will be available at `http://localhost:4000`
-
-## Quick Start
-
-### Complete Setup (Copy-Paste)
-
-**Backend:**
 ```bash
-cd backend
-source /path/to/your/venv/bin/activate
-pip install -r requirements.txt
-mkdir -p /home/[username]/models
-python setup/minilm_loader.py
-python main.py
+python3 -m venv venv
+source venv/bin/activate
+pip install -r backend/requirements.txt
 ```
 
-**Frontend:**
+### OpenAI Credentials
+
+The backend resolves `OPENAI_API_KEY` in this order:
+1. Explicit argument when constructing `ModelManager`.
+2. Environment variable `OPENAI_API_KEY`.
+3. `config.json` value `models.api_key` (if populated).
+4. Fallback file `~/.openai_key` (plain text key, no quotes).
+
+This makes CLI scripts (e.g. `create_index`) robust even in clean shells. If none are found, `ModelManager` raises a clear error.
+
+**LLM retry:** The guarded answer call will attempt up to `models.llm_max_retry` schema repairs (default `1`). Override this in `config.json` or via `RAG_LLM_MAX_RETRY` if you need more retries.
+
+**Deterministic generation:** The default `models.temperature` is `0.0` to keep responses stable. Raise it if you want more creative variability.
+
+### Starting the API
+
+```bash
+source venv/bin/activate
+OPENAI_API_KEY=... ./venv/bin/python -m backend.main
+# or rely on config.json / ~/.openai_key fallback
+```
+
+The server boots on `http://localhost:9000`, prints configuration details, and runs the embedding shape audit described below.
+
+---
+
+## Frontend Setup
+
 ```bash
 cd frontend
 npm install
 echo "NEXT_PUBLIC_BACKEND_URL=http://localhost:9000" > .env.local
-echo "BACKEND_URL=http://localhost:9000" >> .env.local
 npm run dev
 ```
 
-## Usage
+The Next.js UI listens on `http://localhost:4000`.
 
-### 1. Upload Documents
+---
 
-- Navigate to the "Upload Documents" tab
-- Enter document text in the text area
-- Optionally add metadata in JSON format
-- Click "Upload Document" to add it to the vector database
+## Embedding Index Lifecycle
 
-### 2. Query Documents
-
-- Navigate to the "Query Documents" tab
-- Enter your search query
-- Adjust the number of results (1-20)
-- Click "Search Documents" to find similar content
-- View results with similarity scores and metadata
-
-### 3. Manage Documents
-
-- Navigate to the "View Documents" tab
-- See all uploaded documents
-- Delete individual documents or clear all
-- Refresh to see the latest changes
-
-## API Endpoints
-
-### Documents
-- `POST /documents` - Add a new document
-- `GET /documents` - Get all documents
-- `DELETE /documents/{id}` - Delete a specific document
-- `DELETE /documents` - Clear all documents
-
-### Query
-- `POST /query` - Search for similar documents
-
-## Configuration
-
-### Backend Configuration
-
-The backend uses the following default settings:
-- **Embedding Model**: `all-MiniLM-L6-v2` (384 dimensions)
-- **Similarity Metric**: Cosine similarity
-- **Database**: ChromaDB with persistent storage
-- **Port**: 9000
-- **Host**: 0.0.0.0 (all interfaces)
-
-#### Models Path Configuration
-
-The system uses a configurable models path system instead of storing models in the repository.
-
-##### Default Models Path
-- **Default Location**: `/home/[username]/models`
-- **Environment Variable**: `MODELS_PATH` (optional)
-
-##### Setting Up Models Path
-
-**Method 1: Use Default Path (Recommended)**
-```bash
-# Create the default models directory
-mkdir -p /home/[username]/models
-
-# Download the All-MiniLM model
-cd backend
-python setup/minilm_loader.py
-```
-
-**Method 2: Custom Models Path**
-```bash
-# Set custom models directory
-export MODELS_PATH="/path/to/your/models"
-
-# Create the directory
-mkdir -p "$MODELS_PATH"
-
-# Download the All-MiniLM model
-cd backend
-python setup/minilm_loader.py
-```
-
-**Method 3: Environment Variable in .env**
-```bash
-# Add to backend/.env
-echo "MODELS_PATH=/path/to/your/models" >> backend/.env
-```
-
-##### Models Path Examples
-
-**Local Development:**
-```bash
-export MODELS_PATH="/home/[username]/models"
-```
-
-**Production Server:**
-```bash
-export MODELS_PATH="/opt/rag-system/models"
-```
-
-**Docker/Container:**
-```bash
-export MODELS_PATH="/app/models"
-```
-
-**Shared Network Storage:**
-```bash
-export MODELS_PATH="/mnt/shared/models"
-```
-
-##### Downloading All-MiniLM Model
-
-The system will automatically download the All-MiniLM model if not found locally:
+### Building / Rebuilding the Index
 
 ```bash
-cd backend
-python setup/minilm_loader.py
+./venv/bin/python -m backend.scripts.create_index \
+  --overwrite \
+  --source-folder backend/data
 ```
 
-This will:
-1. Download `sentence-transformers/all-MiniLM-L6-v2` from HuggingFace
-2. Save it to your configured models path
-3. Verify the model was saved correctly
+- `--overwrite` clears the existing Chroma collection via the safeguarded delete routine.
+- `source-folder` defaults to `backend/data`; point it anywhere with structured text.
+- The script will back up mismatched collections, rebuild with OpenAI embeddings (1536-dim), and store metadata snapshots in `index/metadata`.
 
-##### Model Loading Behavior
+### Startup Embedding Audit
 
-- **Local Model Found**: Uses local model from `MODELS_PATH`
-- **Local Model Missing**: Falls back to HuggingFace download
-- **Download Failed**: Uses HuggingFace model directly (slower)
+`backend/config/database_config.py` now:
+- Verifies stored embedding dimensions using `collection.peek() / get(limit=5)`.
+- Resets and backs up collections if vectors have the wrong size (e.g., legacy mock embeddings).
+- Prints dimension mismatches and directs you to rebuild.
 
-##### Verifying Models Setup
+This guarantees alignment between configured embedding model and stored vectors.
 
-```bash
-# Check models path configuration
-cd backend
-python -c "from utils.models_path import get_model_info; import json; print(json.dumps(get_model_info(), indent=2))"
+---
 
-# Test model loading
-python -c "from utils.metric_utils import _maybe_load_embedder; model = _maybe_load_embedder(); print('Model loaded:', model is not None)"
+## LangGraph Router Architecture
+
+The intelligent path is implemented in `backend/router_graph.py` as a LangGraph `StateGraph`. Every user turn walks the same deterministic graph, allowing you to reason about routing decisions node-by-node while still keeping the guarded answer LLM as the single “truth oracle”.
+
+### State Model
+
+`AgentState` is a typed dictionary that LangGraph threads through the graph. It has three buckets of fields:
+
+- **Persistent session metadata** – `last_question`, `awaiting_clarification`, `clarify_count`, `last_clarification`, `topic_hint`, and `session_id`. These survive across turns and are stored on the FastAPI session object.
+- **Conversation history** – `messages` is declared as an accumulating list (`Annotated[..., operator.add]`), so each node can append without reimplementing merging logic.
+- **Turn-local scratchpad** – All intermediate values (`user_message`, `effective_question`, `retrieved_chunks`, `avg_similarity`, `rag_response`, `decision`, etc.) live here and are replaced every turn.
+
+This separation keeps the graph pure (all state is explicit) and makes it easy to snapshot the router at any point for debugging.
+
+### Node Breakdown
+
+| Node | Purpose | Key logic |
+| --- | --- | --- |
+| `ingest` | Normalize the incoming message | Appends the raw user message to `messages` and ensures the persistent metadata keys are initialized. |
+| `frustration` | Short-circuit on obvious frustration | Looks for frustration tokens (e.g., “confusing”, “hard”) in non-question utterances. When triggered it returns a stock clarification question without touching retrieval or the LLM, increments `clarify_count`, and marks the decision as `clarification`. |
+| `build_query` | Derive the “effective” question for retrieval | Handles acknowledgements and follow-ups: if the user is replying to an earlier clarification or sends a short fragment, it stitches the fragment to the previous interpreted question; acknowledgements reuse the last question entirely. The result is stored as `effective_question`, and we note whether history was appended (used later for metrics/UI). |
+| `retrieve` | Fetch candidate context | Calls `RAG.retrieve_documents` once using the configured `top_k`. Scores and average similarity are cached in the state so downstream nodes and metrics do not redo the work. |
+| `answer` | Run the guarded answer LLM | Builds a conversation snippet (last *k* turns) plus the current `topic_hint`, then calls `RAG.generate_response`. The raw RAG payload (answer, metrics, sources) is saved in `rag_response`. |
+| `decide` | Interpret the LLM response | Reads `rag_response.metrics`. If the model abstained and supplied a `clarifying_question`, we switch to clarification mode and increment `clarify_count`. A bare abstain becomes an `abstain` decision. Otherwise we treat it as an answer. The resolved `answer_text`, `decision`, `clarification_question`, and latest `interpreted_question` are written to the state. |
+| `finalize` | Assemble the public response and persist session state | Builds the rich metrics blob via `ChatAgent._create_intelligent_metrics`, converts raw chunks into `sources`, attaches retrieval metadata, and stamps timestamps. It also updates persistent metadata so the next turn knows whether we are awaiting a clarification and what the “topic hint” should be. Any retrieval errors from the RAG pipeline are surfaced here with a graceful message. Finally the compiled response is placed in `state["response"]` and the assistant turn is appended to the conversation history. |
+
+The graph wiring is linear except for the optional fast-path out of `frustration`:
+
+```
+START → ingest → frustration ──┐
+                               ├─ skip_to_finalize → finalize → END
+                               └─ continue → build_query → retrieve → answer → decide → finalize → END
 ```
 
-##### Troubleshooting Models Path
+### Session Integration & Metrics
 
-**Problem**: Model not found locally
-**Solution**: Run `python setup/minilm_loader.py` to download the model
+- **ChatAgent integration** – `SimpleRouterApp.invoke` receives the current FastAPI session state (if any), executes the graph, then writes back the updated metadata (`messages`, `last_question`, `awaiting_clarification`, etc.). That is how the router “remembers” clarifications across HTTP requests.
+- **Single LLM call** – Even though the graph has multiple nodes, the guarded answer model is invoked exactly once per turn (inside `answer`). All branching is performed deterministically using the model’s structured JSON response.
+- **Debug output** – `finalize` calls `ChatAgent._create_intelligent_metrics`, which merges the base metrics from the LLM with retrieval stats (scores, context length, chunk IDs), ingest summaries, and clarification bookkeeping. These metrics feed the frontend debug panel, including the new context-utilization highlights.
 
-**Problem**: Permission denied creating models directory
-**Solution**: Ensure write permissions to the models path directory
+Together, these pieces give you a transparent router: you can inspect the state entering or leaving any node, replay hops during debugging, and extend the graph (for example, by inserting a tool-use branch) without altering the core ChatAgent API.
 
-**Problem**: Model loading fails
-**Solution**: Check that the models directory contains the `all-MiniLM-L6-v2` folder
+---
 
-**Problem**: Slow model loading
-**Solution**: Ensure the model is downloaded locally rather than using HuggingFace fallback
+## Current Limitations & Next Steps
 
-#### Offline Mode Configuration
+- Router decisions still depend on hand-coded keyword maps for intent/subject detection. Scaling to new domains will require retraining or more adaptive classifiers.
+- Clarification prompts rely on heuristics and a single LLM format; they would benefit from data-driven evaluation and templating.
+- No automated regression suite exists for router decisions (answer vs. clarify vs. abstain). Capturing interaction logs and training a classifier (distilled from LLM judgments) is the recommended evolution path.
 
-For servers without internet access, the system supports complete offline operation.
+See the “Router Evolution” section in the main README response for detailed design guidance.
 
-##### Enable Offline Mode
+---
 
-**Method 1: Automatic Setup**
-```bash
-cd backend
-python enable_offline_mode.py
-```
+## Useful Scripts
 
-**Method 2: Manual Configuration**
-```bash
-# Set environment variables
-export OFFLINE_MODE=true
-export TIKTOKEN_CACHE_DIR=./tokenizer_cache
-export HF_HUB_OFFLINE=1
-export TRANSFORMERS_OFFLINE=1
-export SENTENCE_TRANSFORMERS_HOME=./models
-export DISABLE_WEB_DOWNLOADS=true
-export LOCAL_MODELS_ONLY=true
+| Command | Purpose |
+| --- | --- |
+| `./venv/bin/python -m backend.scripts.create_index --overwrite --source-folder <dir>` | Rebuild Chroma index from a folder |
+| `./venv/bin/python -m backend.scripts.delete_index --yes` | Clear the collection + metadata |
+| `./venv/bin/python -m backend.tests.run_tests` | Run backend test suite (if enabled) |
 
-# Create .env file
-echo "OFFLINE_MODE=true" > .env
-echo "TIKTOKEN_CACHE_DIR=./tokenizer_cache" >> .env
-echo "HF_HUB_OFFLINE=1" >> .env
-echo "TRANSFORMERS_OFFLINE=1" >> .env
-echo "SENTENCE_TRANSFORMERS_HOME=./models" >> .env
-echo "DISABLE_WEB_DOWNLOADS=true" >> .env
-echo "LOCAL_MODELS_ONLY=true" >> .env
-```
+---
 
-##### Offline Mode Features
+## Logs & Troubleshooting
 
-- **Local Tokenizer**: Uses word-based tokenization instead of web downloads
-- **No Internet Required**: All functionality works without internet access
-- **Cached Models**: Uses locally downloaded models only
-- **Telemetry Disabled**: No external data collection
-- **URL Guardrail**: Blocks all external requests
+- **Backend console**: Shows API key resolution, database checks, router decisions, and embedding requests.
+- **Logs directory**: `backend/logs/rag_system_local.log` collects structured events; `backend/logs/url_guardrail.log` captures network guardrail entries.
+- **Common pitfalls**:
+  - `Collection expecting embedding with dimension of 1`: rebuild index with a valid API key.
+  - `type object 'ModelManager' has no attribute 'openai_client'`: ensure key resolution succeeded.
+  - `TypeError: Failed to fetch` on UI load: restart backend (`./venv/bin/python -m backend.main`).
 
-##### Offline Mode Setup Checklist
+---
 
-- [ ] Download all required models locally
-- [ ] Run `python enable_offline_mode.py`
-- [ ] Verify `.env` file created with offline settings
-- [ ] Test tokenizer: `python local_tokenizer.py`
-- [ ] Start system: `python main.py`
-- [ ] Verify no external requests in logs
+## Contributing
 
-##### Offline Mode Troubleshooting
+- Update `.gitignore` with local secrets (e.g., `backend/.env`) to avoid committing credentials.
+- Run lint/tests before submitting PRs.
+- Capture router decision logs when adding new heuristics; this facilitates regression checks.
 
-**Problem**: System still tries to download from web
-**Solution**: Ensure `OFFLINE_MODE=true` is set in environment
-
-**Problem**: Tokenizer errors
-**Solution**: Check that `local_tokenizer.py` is working correctly
-
-**Problem**: Model loading fails
-**Solution**: Ensure all models are downloaded to local models directory
-
-**Problem**: Performance issues
-**Solution**: Local tokenizer may be slower than tiktoken, but works offline
-
-### Frontend Configuration
-
-#### Backend URL Configuration
-
-The frontend can be configured to connect to different backend URLs using environment variables.
-
-##### Method 1: Environment Variables (Recommended)
-
-Create or update `frontend/.env.local`:
-
-```bash
-# Backend API Configuration
-NEXT_PUBLIC_BACKEND_URL=http://localhost:9000
-BACKEND_URL=http://localhost:9000
-```
-
-##### Configuration Examples
-
-**Local Development:**
-```bash
-NEXT_PUBLIC_BACKEND_URL=http://localhost:9000
-BACKEND_URL=http://localhost:9000
-```
-
-**Production Server:**
-```bash
-NEXT_PUBLIC_BACKEND_URL=https://your-api-server.com
-BACKEND_URL=https://your-api-server.com
-```
-
-**Custom Port:**
-```bash
-NEXT_PUBLIC_BACKEND_URL=http://localhost:8080
-BACKEND_URL=http://localhost:8080
-```
-
-**Docker/Container:**
-```bash
-NEXT_PUBLIC_BACKEND_URL=http://backend:9000
-BACKEND_URL=http://backend:9000
-```
-
-##### Environment Variables Explained
-
-- **`NEXT_PUBLIC_BACKEND_URL`**: Used for client-side API calls (browser)
-- **`BACKEND_URL`**: Used for server-side API routes (Next.js API routes)
-
-##### Files That Support Environment Variables
-
-✅ **Already configured:**
-- `frontend/src/app/api/chat-config/route.ts`
-- `frontend/src/app/api/chunking-config/route.ts`
-- `frontend/src/app/api/documents/route.ts`
-- `frontend/src/app/api/documents/[filename]/content/route.ts`
-- `frontend/src/app/api/documents/[filename]/metadata/route.ts`
-- `frontend/src/services/sessionService.ts`
-- `frontend/src/config/api.ts`
-
-##### Quick Setup
-
-1. **Create environment file:**
-   ```bash
-   cd frontend
-   echo "NEXT_PUBLIC_BACKEND_URL=http://localhost:9000" > .env.local
-   echo "BACKEND_URL=http://localhost:9000" >> .env.local
-   ```
-
-2. **Restart development server:**
-   ```bash
-   npm run dev
-   ```
-
-##### Testing Configuration
-
-1. **Check environment variables:**
-   ```bash
-   cd frontend
-   echo $NEXT_PUBLIC_BACKEND_URL
-   ```
-
-2. **Test backend connection:**
-   ```bash
-   curl http://your-backend-url:9000/health
-   ```
-
-3. **Check browser console** for any connection errors
-
-##### Troubleshooting Backend URL Issues
-
-- **CORS Errors**: Ensure backend allows requests from your frontend domain
-- **Connection Refused**: Verify backend is running and accessible
-- **Environment Variables**: Always restart the development server after changing `.env.local`
-- **HTTPS**: Use HTTPS in production for security
-
-## Development
-
-### Adding New Features
-
-1. **Backend**: Add new endpoints in `main.py`
-2. **Frontend**: Create new components in `src/components/`
-3. **Styling**: Use Tailwind CSS classes for consistent styling
-
-### Database
-
-ChromaDB will automatically create a `chroma_db` directory in the backend folder to store the vector database. This directory contains all the embeddings and metadata.
-
-## Troubleshooting
-
-### Common Issues
-
-1. **CORS Errors**: Ensure the backend is running on port 9000 and the frontend on port 4000
-2. **Model Download**: The first run may take longer as it downloads the sentence transformer model
-3. **Port Conflicts**: Make sure ports 4000 and 9000 are available
-4. **Backend Connection Issues**: Check that `NEXT_PUBLIC_BACKEND_URL` and `BACKEND_URL` are correctly set
-5. **Environment Variables**: Restart the development server after changing `.env.local`
-
-### Backend URL Issues
-
-**Problem**: Frontend can't connect to backend
-**Solutions**:
-- Verify backend is running: `curl http://localhost:9000/health`
-- Check environment variables in `frontend/.env.local`
-- Ensure both `NEXT_PUBLIC_BACKEND_URL` and `BACKEND_URL` are set
-- Restart frontend development server after changing environment variables
-
-**Problem**: CORS errors in browser console
-**Solutions**:
-- Verify backend CORS settings in `backend/config/config.py`
-- Check that frontend URL is in allowed origins
-- Ensure backend is running on the correct host/port
-
-**Problem**: API routes return 500 errors
-**Solutions**:
-- Check `BACKEND_URL` environment variable for server-side API routes
-- Verify backend is accessible from the server-side context
-- Check backend logs for detailed error messages
-
-### Logs
-
-- Backend logs are displayed in the terminal where you run `python main.py`
-- Frontend logs are available in the browser console and terminal
-- API route logs are available in the Next.js development server terminal
+---
 
 ## License
 
-This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENSE) file for details.
-
-Copyright 2025 [username]
+Apache 2.0 – see `LICENSE` for details.

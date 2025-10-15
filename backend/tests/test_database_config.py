@@ -21,7 +21,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config.database_config import DatabaseConfig
+from ..config.database_config import DatabaseConfig
 
 def test_database_config():
     """Test the database configuration functionality"""

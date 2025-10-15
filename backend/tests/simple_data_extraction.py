@@ -25,8 +25,8 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from processors.hybrid_metadata_extractor import HybridMetadataExtractor
-from model_manager import ModelManager
-from config import get_config, set_config, get_data_folder
+from ..model_manager import ModelManager
+from ..config import get_config, set_config, get_data_folder
 
 def extract_metadata_from_data_folder():
     """Extract metadata from data folder files and save results"""

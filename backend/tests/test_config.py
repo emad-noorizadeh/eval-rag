@@ -21,7 +21,7 @@ import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import SystemConfig, get_config, set_config, get_data_folder, get_database_path
+from ..config import SystemConfig, get_config, set_config, get_data_folder, get_database_path
 
 def test_config_system():
     """Test the configuration system"""

@@ -23,9 +23,9 @@ import sys
 import os
 sys.path.append('.')
 
-from model_manager import ModelManager
-from index_builder import IndexBuilder
-from rag import RAG
+from ..model_manager import ModelManager
+from ..index_builder import IndexBuilder
+from ..rag import RAG
 from rag_hybrid import HybridRAG
 
 def test_standard_rag():

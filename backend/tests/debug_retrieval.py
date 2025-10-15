@@ -23,9 +23,9 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from model_manager import ModelManager
-from index_builder import IndexBuilder
-from retrieval_service import RetrievalService, RetrievalConfig, RetrievalMethod
+from ..model_manager import ModelManager
+from ..index_builder import IndexBuilder
+from ..retrieval_service import RetrievalService, RetrievalConfig, RetrievalMethod
 
 def debug_retrieval():
     """Debug retrieval step by step"""
@@ -90,7 +90,7 @@ def debug_retrieval():
     # Test RAG retrieve_documents
     print("\n5. Testing RAG retrieve_documents...")
     try:
-        from rag import RAG
+        from ..rag import RAG
         rag = RAG(model_manager, index_builder, RetrievalMethod.SEMANTIC)
         
         documents = rag.retrieve_documents("Bank of America Preferred Rewards", n_results=5)

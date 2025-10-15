@@ -21,7 +21,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from chat_agent import create_chat_agent
+from ..chat_agent import create_chat_agent
 import json
 
 def test_conversation_context():

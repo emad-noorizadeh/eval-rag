@@ -22,8 +22,8 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from processors.llm_metadata_extractor import LLMMetadataExtractor, HybridMetadataExtractor, ExtractionConfig, ExtractionMethod
-from model_manager import ModelManager
-from config import get_config
+from ..model_manager import ModelManager
+from ..config import get_config
 
 def test_llm_metadata_extractor():
     """Test the LLM metadata extractor"""

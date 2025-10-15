@@ -33,15 +33,15 @@ from pathlib import Path
 from dataclasses import dataclass, asdict
 from urllib.parse import urlparse
 
-from model_manager import ModelManager
-from prompts import (
+from ..model_manager import ModelManager
+from ..prompts import (
     get_document_type_prompt, 
     get_title_extraction_prompt, 
     get_product_entities_prompt, 
     get_categories_prompt
 )
-from config.authority_scores import calculate_authority_score
-from config import get_config
+from ..config.authority_scores import calculate_authority_score
+from ..config import get_config
 
 
 @dataclass

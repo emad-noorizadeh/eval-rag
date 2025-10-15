@@ -35,7 +35,7 @@ def download_and_save_model():
         print("✅ Model downloaded successfully")
         
         # Use models path from environment or default
-        from utils.models_path import get_models_path, ensure_models_directory
+        from ..utils.models_path import get_models_path, ensure_models_directory
         
         models_dir = get_models_path()
         

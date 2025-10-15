@@ -24,11 +24,15 @@ import argparse
 import sys
 from pathlib import Path
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
+from dotenv import load_dotenv, find_dotenv
 
-from index_builder import IndexBuilder
-from model_manager import ModelManager
+# Ensure project root is on the path and env vars are loaded
+project_root = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(project_root))
+load_dotenv(find_dotenv(), override=False)
+
+from backend.index_builder import IndexBuilder
+from backend.model_manager import ModelManager
 
 def main():
     parser = argparse.ArgumentParser(description="Setup index for RAG system")
@@ -52,7 +56,12 @@ def main():
     print("=" * 50)
     
     # Initialize index builder
-    model_manager = ModelManager()
+    try:
+        model_manager = ModelManager()
+    except ValueError as e:
+        print(f"❌ {e}", flush=True)
+        print("   Set OPENAI_API_KEY in your environment or populate models.api_key in the config before running.", flush=True)
+        return 1
     index_builder = IndexBuilder(model_manager)
     
     # Get current status

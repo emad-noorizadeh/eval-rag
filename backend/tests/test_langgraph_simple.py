@@ -29,7 +29,7 @@ def test_langgraph_components():
     try:
         # Test utils_json
         print("🔧 Testing utils_json...")
-        from utils.utils_json import coerce_json
+        from ..utils.utils_json import coerce_json
         
         test_cases = [
             '{"answer": "42", "confidence": "High"}',
@@ -50,7 +50,7 @@ def test_langgraph_components():
         
         # Test chat_agent imports
         print("\n🔧 Testing chat_agent imports...")
-        from chat_agent import ChatAgent
+        from ..chat_agent import ChatAgent
         print("✅ chat_agent imports working")
         
         print("\n✅ All LangGraph components imported successfully!")
@@ -78,9 +78,9 @@ def test_rag_with_langgraph_structure():
     
     try:
         # Use existing RAG system
-        from model_manager import ModelManager
-        from index_builder import IndexBuilder
-        from rag import RAG
+        from ..model_manager import ModelManager
+        from ..index_builder import IndexBuilder
+        from ..rag import RAG
         
         print("🔧 Initializing RAG components...")
         model_manager = ModelManager()

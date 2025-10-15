@@ -44,6 +44,86 @@ interface ChatInterfaceProps {
     setExpandedSources: (sources: Set<string>) => void;
 }
 
+const MAX_STORED_MESSAGES = 30;
+const MAX_SAVED_SOURCE_TEXT = 1000;
+const MAX_SAVED_SUPPORTED_TERMS = 120;
+const MAX_SAVED_SUPPORTED_ENTITIES = 60;
+const MAX_SAVED_SENTENCES = 10;
+const MAX_TERMS_PER_SENTENCE = 12;
+
+const sanitizeContextUtilization = (contextUtilization: any) => {
+    if (!contextUtilization || typeof contextUtilization !== 'object') {
+        return contextUtilization;
+    }
+
+    const supportedTerms = Array.isArray(contextUtilization.supported_terms)
+        ? contextUtilization.supported_terms.slice(0, MAX_SAVED_SUPPORTED_TERMS)
+        : contextUtilization.supported_terms;
+
+    const supportedEntitiesItems = Array.isArray(contextUtilization.supported_entities?.items)
+        ? contextUtilization.supported_entities.items.slice(0, MAX_SAVED_SUPPORTED_ENTITIES)
+        : contextUtilization.supported_entities?.items;
+
+    const supportedEntities = contextUtilization.supported_entities
+        ? {
+            ...contextUtilization.supported_entities,
+            items: supportedEntitiesItems,
+            count: supportedEntitiesItems ? supportedEntitiesItems.length : contextUtilization.supported_entities.count
+        }
+        : undefined;
+
+    const supportedTermsPerSentence = Array.isArray(contextUtilization.supported_terms_per_sentence)
+        ? contextUtilization.supported_terms_per_sentence.slice(0, MAX_SAVED_SENTENCES).map(sentence => ({
+            ...sentence,
+            supported_terms: Array.isArray(sentence.supported_terms)
+                ? sentence.supported_terms.slice(0, MAX_TERMS_PER_SENTENCE)
+                : sentence.supported_terms
+        }))
+        : contextUtilization.supported_terms_per_sentence;
+
+    return {
+        summary: contextUtilization.summary?.slice(0, 400),
+        precision_token: contextUtilization.precision_token,
+        recall_context: contextUtilization.recall_context,
+        numeric_match: contextUtilization.numeric_match,
+        supported_terms: supportedTerms,
+        supported_terms_per_sentence: supportedTermsPerSentence,
+        supported_entities: supportedEntities
+    };
+};
+
+const sanitizeMessagesForStorage = (messages: Message[]): Message[] => {
+    return messages
+        .slice(-MAX_STORED_MESSAGES)
+        .map((message) => {
+            const sanitizedSources = message.sources?.map((source) => ({
+                ...source,
+                text: typeof source.text === 'string'
+                    ? source.text.slice(0, MAX_SAVED_SOURCE_TEXT)
+                    : source.text,
+            }));
+
+            const sanitizedMetrics = message.metrics ? {
+                confidence: message.metrics.confidence,
+                faithfulness: message.metrics.faithfulness,
+                completeness: message.metrics.completeness,
+                answer_type: message.metrics.answer_type,
+                abstained: message.metrics.abstained,
+                reasoning_notes: message.metrics.reasoning_notes?.slice(0, 400),
+                context_utilization: sanitizeContextUtilization(message.metrics.context_utilization),
+            } : undefined;
+
+            return {
+                id: message.id,
+                text: message.text,
+                isUser: message.isUser,
+                timestamp: message.timestamp,
+                sources: sanitizedSources,
+                metrics: sanitizedMetrics,
+            };
+        });
+};
+
 export default function ChatInterface({
     showDebugPanel,
     setShowDebugPanel,
@@ -132,8 +212,53 @@ export default function ChatInterface({
 
     // Save messages to localStorage whenever messages change
     useEffect(() => {
-        if (sessionStatus.sessionId && messages.length > 0 && typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
-            localStorage.setItem(`chatMessages_${sessionStatus.sessionId}`, JSON.stringify(messages));
+        if (!sessionStatus.sessionId || messages.length === 0 || typeof window === 'undefined' || typeof localStorage === 'undefined') {
+            return;
+        }
+
+        const storageKey = `chatMessages_${sessionStatus.sessionId}`;
+        const sanitizedMessages = sanitizeMessagesForStorage(messages);
+
+        const minimalMessages = sanitizedMessages.map((message) => ({
+            id: message.id,
+            text: message.text,
+            isUser: message.isUser,
+            timestamp: message.timestamp,
+        }));
+
+        const minimalTrimmed = minimalMessages.slice(-Math.min(10, minimalMessages.length));
+
+        const attempts = [
+            sanitizedMessages,
+            sanitizedMessages.slice(-Math.min(10, sanitizedMessages.length)),
+            minimalMessages,
+            minimalTrimmed,
+        ].filter((candidate) => candidate.length > 0);
+
+        let saved = false;
+
+        for (const candidate of attempts) {
+            try {
+                localStorage.setItem(storageKey, JSON.stringify(candidate));
+                saved = true;
+                break;
+            } catch (error) {
+                const quotaExceeded =
+                    error instanceof DOMException &&
+                    (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED');
+
+                if (!quotaExceeded) {
+                    console.error('Error saving messages to localStorage:', error);
+                    break;
+                }
+
+                console.warn('LocalStorage quota exceeded while saving chat history. Retrying with reduced payload.', error);
+            }
+        }
+
+        if (!saved) {
+            console.error('Unable to persist chat history; clearing stored conversation to stay within quota.');
+            localStorage.removeItem(storageKey);
         }
     }, [messages, sessionStatus.sessionId]);
 

@@ -18,14 +18,14 @@ Author: Emad Noorizadeh
 """
 
 import json
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from collections import defaultdict
-from model_manager import ModelManager
-from index_builder import IndexBuilder
-from utils.rag_utils import format_context_with_metadata
-from retrieval_service import RetrievalService, RetrievalConfig, RetrievalMethod
-from prompts import get_rag_main_prompt, get_rag_simple_prompt
-from config.config import get_config
+from .model_manager import ModelManager
+from .index_builder import IndexBuilder
+from .utils.rag_utils import format_context_with_metadata
+from .retrieval_service import RetrievalService, RetrievalConfig, RetrievalMethod
+from .prompts import get_rag_main_prompt, get_rag_simple_prompt
+from .config.config import get_config
 
 class RAG:
     """Retrieval-Augmented Generation system"""
@@ -35,12 +35,13 @@ class RAG:
         self.model_manager = model_manager
         self.index_builder = index_builder
         self.retrieval_method = retrieval_method
-        
+
         # Initialize retrieval service
         self.retrieval_service = RetrievalService(model_manager, index_builder)
-        
+
         # Define the prompt template for structured response + metrics
         self.prompt_template = get_rag_main_prompt()
+        self.last_retrieval_error: Optional[str] = None
 
     
     
@@ -55,29 +56,30 @@ class RAG:
         Returns:
             List of retrieved documents with metadata
         """
-        # Create retrieval config (simplified for semantic only)
-        retrieval_config = RetrievalConfig(
-            method=self.retrieval_method,
-            top_k=n_results,
-            similarity_threshold=0.45
-        )
-        
-        # Use retrieval service
-        retrieval_result = self.retrieval_service.retrieve(query, retrieval_config)
-        
-        # Convert to the format expected by the rest of the RAG system
-        documents = []
-        for chunk in retrieval_result.chunks:
-            doc = {
-                "chunk_id": chunk["chunk_id"],
-                "doc_id": chunk["doc_id"],
-                "text": chunk["text"],
-                "score": chunk["score"],
-                "metadata": chunk["metadata"]
-            }
-            documents.append(doc)
-        
-        return documents
+        self.last_retrieval_error = None
+        try:
+            retrieval_config = RetrievalConfig(
+                method=self.retrieval_method,
+                top_k=n_results,
+                similarity_threshold=0.45
+            )
+
+            retrieval_result = self.retrieval_service.retrieve(query, retrieval_config)
+
+            documents = []
+            for chunk in retrieval_result.chunks:
+                documents.append({
+                    "chunk_id": chunk["chunk_id"],
+                    "doc_id": chunk["doc_id"],
+                    "text": chunk["text"],
+                    "score": chunk["score"],
+                    "metadata": chunk["metadata"],
+                })
+            return documents
+        except Exception as exc:
+            self.last_retrieval_error = str(exc)
+            print(f"Retrieval error: {exc}")
+            return []
     
     def _format_context_from_nodes(self, nodes: List[Dict[str, Any]]) -> tuple:
         """
@@ -135,8 +137,8 @@ class RAG:
             valid_ids = ", ".join(ids) if ids else ""
 
             # 2) Assemble prompt using new guarded template
-            from prompts import get_rag_main_prompt
-            prompt = get_rag_main_prompt().format(
+            prompt_template = get_rag_main_prompt()
+            base_prompt = prompt_template.format(
                 conversation_snippet=conversation_snippet or "(none)",
                 topic_hint=topic_hint or "(none)",
                 context=context or "(no context)",
@@ -144,44 +146,93 @@ class RAG:
                 valid_chunk_ids=valid_ids or "[]"
             )
 
-            # 3) Call LLM, parse, enforce
-            if self.model_manager.get_openai_client():
-                response_text = self.model_manager.generate_text([{"role": "user", "content": prompt}])
-                data = self._parse_json_response(response_text) or {}
-                
-                # Validate evidence IDs using utility
-                from utils.conversation_utils import validate_evidence_ids
-                if not validate_evidence_ids(data.get("evidence") or [], ids):
-                    data["abstained"] = True
-                    data["answer"] = ""
-                    data["clarifying_question"] = data.get("clarifying_question") or "I need more specific details to answer."
-                    data["confidence"] = "Low"
-                
-                return {
-                    "answer": data.get("answer",""),
-                    "sources": retrieved,
-                    "metrics": data
-                }
-            else:
+            if not self.model_manager.get_openai_client():
                 return self._create_fallback_response(question, retrieved)
-                
+
+            max_retry = get_config("models", "llm_max_retry")
+            try:
+                max_retry = int(max_retry)
+            except (TypeError, ValueError):
+                max_retry = 1
+            max_retry = max(0, max_retry)
+
+            attempt = 0
+            current_prompt = base_prompt
+            last_error = ""
+
+            scores = [chunk.get("score", 0.0) for chunk in retrieved]
+            avg_similarity = sum(scores) / len(scores) if scores else 0.0
+            similarity_threshold = get_config("chat_agent", "similarity_threshold") or 0.45
+            try:
+                similarity_threshold = float(similarity_threshold)
+            except (TypeError, ValueError):
+                similarity_threshold = 0.45
+
+            while True:
+                response_text = self.model_manager.generate_text([{"role": "user", "content": current_prompt}])
+                data = self._parse_json_response(response_text) or {}
+                is_valid, normalized, error_msg = self._validate_response_schema(data)
+
+                if is_valid:
+                    data = normalized
+
+                    from .utils.conversation_utils import validate_evidence_ids
+                    if not validate_evidence_ids(data.get("evidence") or [], ids):
+                        data["abstained"] = True
+                        data["answer"] = ""
+                        data["clarifying_question"] = data.get("clarifying_question") or "I need more specific details to answer."
+                        data["confidence"] = "Low"
+
+                    if data.get("abstained") and ids and avg_similarity >= similarity_threshold:
+                        attempt += 1
+                        if attempt > max_retry:
+                            print("LLM abstained despite sufficient context; falling back")
+                            break
+                        repair_reason = (
+                            "Model abstained despite sufficient grounding context. "
+                            "Provide a direct answer using only the supplied context."
+                        )
+                        current_prompt = self._build_repair_prompt(base_prompt, response_text, repair_reason)
+                        continue
+
+                    return {
+                        "answer": data.get("answer", ""),
+                        "sources": retrieved,
+                        "metrics": data
+                    }
+
+                last_error = error_msg or "Schema validation failed"
+                attempt += 1
+                if attempt > max_retry:
+                    print(f"Schema validation failed after {attempt} attempts: {last_error}")
+                    break
+                current_prompt = self._build_repair_prompt(base_prompt, response_text, last_error)
+
+            return self._create_fallback_response(question, retrieved)
+
         except Exception as e:
             print(f"Error generating structured response: {e}")
             return self._create_fallback_response(question, retrieved)
     
     def retrieve_documents_union_if_needed(self, original_query: str, hint_query: str, n_results: int, use_union: bool):
         """Union retrieval helper called by router's retrieve"""
-        if use_union and hint_query:
-            return self.retrieval_service.retrieve_union(original_query, hint_query, n_results)
-        return self.retrieval_service.retrieve_semantic(original_query, n_results)
+        self.last_retrieval_error = None
+        try:
+            if use_union and hint_query:
+                return self.retrieval_service.retrieve_union(original_query, hint_query, n_results)
+            return self.retrieval_service.retrieve_semantic(original_query, n_results)
+        except Exception as exc:
+            self.last_retrieval_error = str(exc)
+            print(f"Retrieval error (union): {exc}")
+            return []
     
     def _parse_json_response(self, response_text: str) -> Dict[str, Any]:
         """
         Parse JSON response from the model
-        
+
         Args:
             response_text: Raw response text from the model
-            
+
         Returns:
             Parsed JSON response with defaults
         """
@@ -215,6 +266,101 @@ class RAG:
                 "abstained": True,
                 "reasoning_notes": f"JSON parsing error: {str(e)}"
             }
+
+    def _validate_response_schema(self, data: Dict[str, Any]) -> Tuple[bool, Dict[str, Any], str]:
+        """Validate and normalize the LLM JSON output against the expected schema."""
+        required_strings = [
+            "answer",
+            "missing",
+            "confidence",
+            "answer_type",
+            "reasoning_notes",
+            "clarifying_question",
+            "interpreted_question"
+        ]
+        numeric_fields = ["faithfulness_score", "completeness_score"]
+        normalized: Dict[str, Any] = {}
+        errors = []
+
+        for field in required_strings:
+            value = data.get(field)
+            if value is None:
+                errors.append(f"Missing field '{field}'")
+                continue
+            if not isinstance(value, str):
+                try:
+                    value = str(value)
+                except Exception:
+                    errors.append(f"Field '{field}' must be a string")
+                    continue
+            normalized[field] = value
+
+        # Evidence list
+        evidence = data.get("evidence")
+        if evidence is None:
+            errors.append("Missing field 'evidence'")
+        elif not isinstance(evidence, list):
+            errors.append("Field 'evidence' must be a list")
+        else:
+            normalized["evidence"] = [str(item) for item in evidence]
+
+        # Numeric fields
+        for field in numeric_fields:
+            value = data.get(field)
+            if value is None:
+                errors.append(f"Missing field '{field}'")
+                continue
+            try:
+                normalized[field] = float(value)
+            except (TypeError, ValueError):
+                errors.append(f"Field '{field}' must be numeric")
+
+        # Abstained is bool
+        abstained = data.get("abstained")
+        if abstained is None:
+            errors.append("Missing field 'abstained'")
+        else:
+            if isinstance(abstained, bool):
+                normalized["abstained"] = abstained
+            elif isinstance(abstained, str) and abstained.lower() in {"true", "false"}:
+                normalized["abstained"] = abstained.lower() == "true"
+            else:
+                errors.append("Field 'abstained' must be boolean")
+
+        # Optional fields we still carry over if present
+        normalized.setdefault("clarifying_question", "")
+        normalized.setdefault("interpreted_question", "")
+
+        if errors:
+            return False, {}, "; ".join(errors)
+        return True, normalized, ""
+
+    def _build_repair_prompt(self, base_prompt: str, previous_output: str, error_msg: str) -> str:
+        """Create a repair prompt instructing the LLM to fix schema issues."""
+        schema_description = (
+            "Expected JSON schema:\n"
+            "{\n"
+            "  \"answer\": string,\n"
+            "  \"evidence\": array of strings,\n"
+            "  \"missing\": string,\n"
+            "  \"confidence\": string,\n"
+            "  \"faithfulness_score\": number,\n"
+            "  \"completeness_score\": number,\n"
+            "  \"answer_type\": string,\n"
+            "  \"abstained\": boolean,\n"
+            "  \"reasoning_notes\": string,\n"
+            "  \"clarifying_question\": string,\n"
+            "  \"interpreted_question\": string\n"
+            "}\n"
+        )
+        return (
+            f"{base_prompt}\n\n"
+            f"The previous response did not satisfy the required JSON schema.\n"
+            f"Reason: {error_msg}\n"
+            f"Previous response:\n{previous_output}\n\n"
+            f"{schema_description}"
+            "Return a corrected JSON object that follows this schema exactly."
+        )
     
     def _create_empty_response(self, query: str) -> Dict[str, Any]:
         """Create response when no documents are retrieved"""

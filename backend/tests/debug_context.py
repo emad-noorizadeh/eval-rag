@@ -19,9 +19,9 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from model_manager import ModelManager
-from index_builder import IndexBuilder
-from rag import RAG
+from ..model_manager import ModelManager
+from ..index_builder import IndexBuilder
+from ..rag import RAG
 
 def debug_context():
     """Debug what's in the retrieved context"""

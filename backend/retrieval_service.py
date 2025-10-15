@@ -23,8 +23,8 @@ from typing import List, Dict, Any
 from enum import Enum
 from dataclasses import dataclass
 
-from index_builder import IndexBuilder
-from model_manager import ModelManager
+from .index_builder import IndexBuilder
+from .model_manager import ModelManager
 
 
 class RetrievalMethod(Enum):

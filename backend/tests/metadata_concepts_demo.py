@@ -32,9 +32,9 @@ from llama_index.core import SimpleDirectoryReader, VectorStoreIndex, Document
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.retrievers import VectorIndexRetriever
 
-from model_manager import ModelManager
-from config.database_config import DatabaseConfig
-from config import get_config, get_data_folder
+from ..model_manager import ModelManager
+from ..config.database_config import DatabaseConfig
+from ..config import get_config, get_data_folder
 
 
 def demonstrate_metadata_concepts():

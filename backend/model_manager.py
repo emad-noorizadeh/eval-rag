@@ -18,10 +18,47 @@ Author: Emad Noorizadeh
 """
 
 from typing import Dict, Any, Optional
+from pathlib import Path
+from dotenv import load_dotenv, find_dotenv
 from llama_index.embeddings.openai import OpenAIEmbedding
 import openai
 import os
-from config import get_config
+from .config import get_config
+
+# Ensure environment variables (like OPENAI_API_KEY) are loaded once per process
+load_dotenv(find_dotenv(), override=False)
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+
+def _resolve_api_key(explicit_key: Optional[str] = None) -> Optional[str]:
+    """Resolve the OpenAI API key from explicit arg, env, or config."""
+    if explicit_key:
+        return explicit_key
+    
+    env_key = os.getenv("OPENAI_API_KEY")
+    if env_key:
+        return env_key
+    
+    try:
+        config_key = get_config("models", "api_key")
+    except Exception:
+        config_key = None
+    
+    if config_key:
+        print("✓ OpenAI API key loaded from configuration")
+        return config_key
+    
+    fallback_path = Path.home() / ".openai_key"
+    try:
+        if fallback_path.exists():
+            file_key = fallback_path.read_text(encoding="utf-8").strip()
+            if file_key:
+                print(f"✓ OpenAI API key loaded from {fallback_path}")
+                return file_key
+    except Exception as e:
+        print(f"⚠️ Could not read fallback OpenAI key file {fallback_path}: {e}")
+    
+    return None
 
 class ModelManager:
     """Manages all models used in the RAG system"""
@@ -30,16 +67,19 @@ class ModelManager:
         self.models: Dict[str, Any] = {}
         self.embedding_model = None
         self.openai_client = None
-        self._initialize_models(openai_api_key)
+        self.api_key = _resolve_api_key(openai_api_key)
+        if self.api_key:
+            # Keep env in sync so downstream libs relying on os.getenv still work
+            os.environ["OPENAI_API_KEY"] = self.api_key
+        self._initialize_models()
     
     def _initialize_models(self, openai_api_key: str = None):
         """Initialize all available models"""
         # Get API key from environment or parameter
-        api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
+        api_key = self.api_key or _resolve_api_key(openai_api_key)
         
         if not api_key:
-            print("⚠ No OpenAI API key found. Set OPENAI_API_KEY environment variable.")
-            return
+            raise ValueError("No OpenAI API key available. Set OPENAI_API_KEY or configure models.api_key.")
         
         try:
             # Get embedding model from configuration

@@ -30,8 +30,8 @@ from typing import Dict, Any
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config.config import get_config
-from config.database_config import DatabaseConfig
+from ..config.config import get_config
+from ..config.database_config import DatabaseConfig
 # Capabilities persistence removed - using semantic only
 # BM25 persistence removed - using semantic only
 

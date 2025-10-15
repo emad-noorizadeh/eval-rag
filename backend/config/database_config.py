@@ -18,6 +18,9 @@ Author: Emad Noorizadeh
 """
 
 import os
+import shutil
+from datetime import datetime
+from pathlib import Path
 import chromadb
 from typing import Optional, Dict, Any
 from llama_index.vector_stores.chroma import ChromaVectorStore
@@ -33,6 +36,7 @@ class DatabaseConfig:
         self.chroma_collection = None
         self.vector_store = None
         self.storage_context = None
+        self.collection_reset_due_to_dimension_change = False
         self._initialize_database()
     
     def _initialize_database(self):
@@ -43,7 +47,7 @@ class DatabaseConfig:
             
             # Use config collection name if not provided
             if self.collection_name is None:
-                from config import get_collection_name
+                from . import get_collection_name
                 self.collection_name = get_collection_name()
             
             # Initialize ChromaDB client
@@ -61,10 +65,128 @@ class DatabaseConfig:
             
             print(f"✓ Database initialized: {self.db_path}")
             print(f"✓ Collection: {self.collection_name}")
+            self._log_embedding_shape()
             
         except Exception as e:
             print(f"✗ Database initialization failed: {e}")
             raise
+    
+    def _get_expected_embedding_dimension(self) -> Optional[int]:
+        """Return the expected embedding dimension from configuration, if known."""
+        try:
+            from . import get_config
+        except Exception:
+            return None
+        
+        model_name = get_config("models", "embedding_model")
+        if not model_name:
+            return None
+        
+        # Known embedding dimensions for common OpenAI models
+        model_dimensions = {
+            "text-embedding-3-small": 1536,
+            "text-embedding-3-large": 3072,
+            "text-embedding-ada-002": 1536,
+        }
+        return model_dimensions.get(model_name)
+    
+    def _get_backup_root(self) -> Path:
+        """Determine backup directory for Chroma data."""
+        backup_path = None
+        try:
+            from . import get_config
+            backup_path = get_config("database", "backup_path")
+        except Exception:
+            backup_path = None
+        
+        if not backup_path:
+            backup_path = f"{self.db_path}_backup"
+        
+        return Path(backup_path)
+    
+    def _reinitialize_collection(self):
+        """Recreate collection, vector store, and storage context."""
+        self.chroma_collection = self.chroma_client.get_or_create_collection(
+            name=self.collection_name,
+            metadata={"hnsw:space": "cosine"}
+        )
+        self.vector_store = ChromaVectorStore(chroma_collection=self.chroma_collection)
+        self.storage_context = StorageContext.from_defaults(vector_store=self.vector_store)
+    
+    def _handle_embedding_dimension_mismatch(self, sample_count: int, found_dim: int, expected_dim: int):
+        """Reset the collection when stored embeddings have the wrong dimension."""
+        print("⚠️  Resetting Chroma collection due to embedding dimension mismatch...")
+        backup_path = None
+        try:
+            src_path = Path(self.db_path)
+            if src_path.exists():
+                backup_root = self._get_backup_root()
+                backup_root.mkdir(parents=True, exist_ok=True)
+                timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                backup_path = backup_root / f"{self.collection_name}_dim{found_dim}_backup_{timestamp}"
+                shutil.copytree(src_path, backup_path)
+                print(f"📦 Backed up existing Chroma database to {backup_path}")
+        except Exception as backup_err:
+            print(f"⚠️  Could not backup Chroma database before reset: {backup_err}")
+            backup_path = None
+        
+        try:
+            self.chroma_client.delete_collection(name=self.collection_name)
+            print(f"🗑️  Removed mismatched collection '{self.collection_name}' (dimension {found_dim})")
+        except Exception as delete_err:
+            print(f"✗ Failed to delete mismatched collection automatically: {delete_err}")
+            print("✗ Please delete the collection manually and rebuild the index.")
+            return
+        
+        self._reinitialize_collection()
+        self.collection_reset_due_to_dimension_change = True
+        
+        if backup_path:
+            print(f"ℹ️  Previous collection data backed up to: {backup_path}")
+        if sample_count:
+            print("⚠️  The collection is now empty. Re-run your indexing workflow to regenerate embeddings.")
+        else:
+            print("ℹ️  Collection metadata reset. Add documents before querying.")
+    
+    def _log_embedding_shape(self):
+        """Inspect a sample of embeddings in Chroma and report their dimensions."""
+        if not self.chroma_collection:
+            print("⚠️  Chroma collection not initialized; cannot inspect embeddings")
+            return
+        
+        try:
+            sample = self.chroma_collection.peek()
+            embeddings = (sample or {}).get("embeddings")
+            if embeddings is None or (hasattr(embeddings, "__len__") and len(embeddings) == 0):
+                # Fallback: explicit get call in case peek omits embeddings
+                sample = self.chroma_collection.get(limit=5, include=["embeddings"])
+                embeddings = (sample or {}).get("embeddings")
+            
+            if embeddings is None or (hasattr(embeddings, "__len__") and len(embeddings) == 0):
+                print("ℹ️  No embeddings available in collection to inspect yet")
+                return
+            
+            if hasattr(embeddings, "tolist"):
+                embeddings = embeddings.tolist()
+            
+            first_vector = embeddings[0]
+            if hasattr(first_vector, "tolist"):
+                first_vector = first_vector.tolist()
+            vector_dim = len(first_vector) if first_vector is not None else 0
+            vector_count = len(embeddings)
+            expected_dim = self._get_expected_embedding_dimension()
+            
+            if expected_dim is not None:
+                if vector_dim == expected_dim:
+                    print(f"✓ Chroma embedding sample: {vector_count}x{vector_dim} (expected {expected_dim})")
+                else:
+                    print(f"⚠️  Chroma embedding sample: {vector_count}x{vector_dim} (expected {expected_dim})")
+                    print("⚠️  Stored embeddings dimension does not match expected configuration")
+                    self._handle_embedding_dimension_mismatch(vector_count, vector_dim, expected_dim)
+            else:
+                print(f"ℹ️  Chroma embedding sample: {vector_count}x{vector_dim}")
+        except Exception as e:
+            print(f"⚠️  Could not inspect Chroma embeddings: {e}")
     
     def get_chroma_client(self) -> chromadb.ClientAPI:
         """Get ChromaDB client"""

@@ -19,7 +19,7 @@ Author: Emad Noorizadeh
 
 import os
 import sys
-from chat_agent import create_chat_agent
+from ..chat_agent import create_chat_agent
 
 
 def test_langgraph_agent():

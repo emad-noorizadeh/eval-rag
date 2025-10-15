@@ -2,7 +2,7 @@
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
-# You may obtain a copy at
+# You may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
 #
@@ -13,88 +13,127 @@
 # limitations under the License.
 
 """
-Test script for chunking configuration
+Test Chunking Configuration
 Author: Emad Noorizadeh
+
+Test chunking configuration and utilities.
 """
 
 import os
 import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import json
+import unittest
+from unittest.mock import patch, mock_open
 
-from model_manager import ModelManager
-from index_builder import IndexBuilder
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-def test_chunking_config():
+from ..utils.chunking_utils import (
+    get_chunking_config,
+    set_chunking_config,
+    get_word_count_splitter,
+    get_effective_chunk_sizes,
+    print_chunking_info
+)
+
+class TestChunkingConfig(unittest.TestCase):
     """Test chunking configuration functionality"""
-    print("=== Testing Chunking Configuration ===\n")
     
-    # Initialize model manager
-    print("🔧 Initializing ModelManager...")
-    model_manager = ModelManager()
+    def setUp(self):
+        """Set up test fixtures"""
+        self.test_config = {
+            "chunking": {
+                "word_count_ratio": 0.75
+            }
+        }
     
-    if not model_manager.list_models()['embedding']:
-        print("❌ Embedding model not available. Please set OPENAI_API_KEY environment variable.")
-        return
+    def test_get_chunking_config_default(self):
+        """Test getting default chunking config"""
+        with patch('os.path.exists', return_value=False):
+            config = get_chunking_config()
+            self.assertEqual(config["word_count_ratio"], 0.75)
     
-    # Test 1: Default configuration
-    print("\n🔧 Test 1: Default chunking configuration...")
-    index_builder = IndexBuilder(
-        model_manager, 
-        collection_name="chunking_test"
-        # Using LlamaIndex defaults: chunk_size=1024, chunk_overlap=20
-    )
+    def test_get_chunking_config_from_file(self):
+        """Test getting chunking config from file"""
+        mock_config = json.dumps(self.test_config)
+        with patch('os.path.exists', return_value=True), \
+             patch('builtins.open', mock_open(read_data=mock_config)):
+            config = get_chunking_config()
+            self.assertEqual(config["word_count_ratio"], 0.75)
     
-    config = index_builder.get_chunking_config()
-    print("Current configuration:")
-    for key, value in config.items():
-        if isinstance(value, dict):
-            print(f"  {key}:")
-            for k, v in value.items():
-                print(f"    {k}: {v}")
-        else:
-            print(f"  {key}: {value}")
+    def test_set_chunking_config(self):
+        """Test setting chunking config"""
+        mock_config = {"index_id": "test"}
+        with patch('os.path.exists', return_value=True), \
+             patch('builtins.open', mock_open(read_data=json.dumps(mock_config))), \
+             patch('json.dump') as mock_dump:
+            result = set_chunking_config(True, 0.8)
+            self.assertTrue(result)
+            mock_dump.assert_called_once()
     
-    # Test 2: Update chunking parameters
-    print("\n🔧 Test 2: Update chunking parameters...")
-    print("Updating to LlamaIndex defaults...")
-    index_builder.update_chunking_params(chunk_size=1024, chunk_overlap=20)
+    def test_word_count_splitter(self):
+        """Test word count splitter"""
+        splitter = get_word_count_splitter(5, 2)  # 5 words, 2 overlap
+        text = "This is a test sentence with more words than the chunk size"
+        chunks = splitter(text)
+        
+        self.assertIsInstance(chunks, list)
+        self.assertGreater(len(chunks), 1)
+        
+        # Check that chunks don't exceed word limit
+        for chunk in chunks:
+            word_count = len(chunk.split())
+            self.assertLessEqual(word_count, 5)
     
-    config = index_builder.get_chunking_config()
-    print("Updated configuration:")
-    for key, value in config.items():
-        if isinstance(value, dict):
-            print(f"  {key}:")
-            for k, v in value.items():
-                print(f"    {k}: {v}")
-        else:
-            print(f"  {key}: {value}")
     
-    # Test 3: Test with different chunk sizes
-    print("\n🔧 Test 3: Test with different chunk sizes...")
+    def test_get_effective_chunk_sizes_word_count(self):
+        """Test effective chunk sizes for word count mode"""
+        with patch('utils.chunking_utils.get_chunking_config', return_value={
+            "word_count_ratio": 0.75
+        }):
+            sizes = get_effective_chunk_sizes(1024, 20)
+            self.assertEqual(sizes["mode"], "word_count")
+            self.assertEqual(sizes["chunk_size"], 768)  # 1024 * 0.75
+            self.assertEqual(sizes["chunk_overlap"], 15)  # 20 * 0.75
+            self.assertEqual(sizes["unit"], "words")
+            self.assertEqual(sizes["ratio"], 0.75)
+
+class TestChunkingIntegration(unittest.TestCase):
+    """Test chunking integration with index builder"""
     
-    # Test with smaller chunks
-    print("Testing with smaller chunks (512, 50)...")
-    index_builder.update_chunking_params(chunk_size=512, chunk_overlap=50)
+    def test_chunking_config_loading(self):
+        """Test that chunking config is loaded correctly"""
+        # This would test the actual integration with index_builder
+        # For now, just test that the config can be loaded
+        config = get_chunking_config()
+        self.assertIn("word_count_ratio", config)
+
+def run_chunking_tests():
+    """Run chunking tests"""
+    print("🧪 Running Chunking Configuration Tests")
+    print("=" * 40)
     
-    # Test with larger chunks
-    print("Testing with larger chunks (2048, 100)...")
-    index_builder.update_chunking_params(chunk_size=2048, chunk_overlap=100)
+    # Create test suite
+    loader = unittest.TestLoader()
+    suite = unittest.TestSuite()
     
-    # Test with minimal overlap
-    print("Testing with minimal overlap (1000, 10)...")
-    index_builder.update_chunking_params(chunk_size=1000, chunk_overlap=10)
+    # Add test cases
+    suite.addTests(loader.loadTestsFromTestCase(TestChunkingConfig))
+    suite.addTests(loader.loadTestsFromTestCase(TestChunkingIntegration))
     
-    # Test with high overlap
-    print("Testing with high overlap (1000, 300)...")
-    index_builder.update_chunking_params(chunk_size=1000, chunk_overlap=300)
+    # Run tests
+    runner = unittest.TextTestRunner(verbosity=2)
+    result = runner.run(suite)
     
-    # Final configuration
-    print("\n🔧 Final configuration:")
-    final_config = index_builder.get_chunking_config()
-    print(f"  Chunk size: {final_config['chunk_size']}")
-    print(f"  Chunk overlap: {final_config['chunk_overlap']}")
+    # Print summary
+    if result.wasSuccessful():
+        print("\n✅ All chunking tests passed!")
+    else:
+        print(f"\n❌ {len(result.failures)} test(s) failed")
+        for test, traceback in result.failures:
+            print(f"   - {test}: {traceback}")
     
-    print(f"\n✅ Chunking configuration test completed!")
+    return result.wasSuccessful()
 
 if __name__ == "__main__":
-    test_chunking_config()
+    run_chunking_tests()

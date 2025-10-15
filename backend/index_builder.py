@@ -27,14 +27,26 @@ from llama_index.core import SimpleDirectoryReader, VectorStoreIndex, Document
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.settings import Settings
 # Settings import removed - using direct component passing instead
-from model_manager import ModelManager
-from config.database_config import DatabaseConfig
-from config import get_config, get_data_folder, get_database_path, get_collection_name, get_chunking_params
-from utils.rag_utils import DocumentProcessor, create_file_metadata_function, validate_document_folder
+from .model_manager import ModelManager
+from .config.database_config import DatabaseConfig
+from .config import (
+    get_config,
+    get_data_folder,
+    get_database_path,
+    get_collection_name,
+    get_chunking_params,
+)
+from .utils.rag_utils import (
+    DocumentProcessor,
+    create_file_metadata_function,
+    validate_document_folder,
+)
 # Hybrid metadata extractor removed - using semantic only
-from processors.enhanced_document_processor import EnhancedDocumentProcessor as NewEnhancedDocumentProcessor
-from processors.llm_metadata_extractor import HybridMetadataExtractor
-from utils.metadata_storage import MetadataStorage
+from .processors.enhanced_document_processor import (
+    EnhancedDocumentProcessor as NewEnhancedDocumentProcessor,
+)
+from .processors.llm_metadata_extractor import HybridMetadataExtractor
+from .utils.metadata_storage import MetadataStorage
 
 # Tokenizer functionality removed - using word-count-based chunking only
 
@@ -112,9 +124,14 @@ class IndexBuilder:
         # DB + vector store
         db_path = db_path or get_database_path()
         self.db_config = DatabaseConfig(db_path=db_path, collection_name=self.collection_name)
+        if self.db_config.collection_reset_due_to_dimension_change:
+            print("⚠️  Chroma collection was reset due to embedding dimension mismatch; rebuild the index to repopulate it.")
         
         # Embedder & configurable splitter
         self.embed_model = self.model_manager.get_embedding_model()
+        if self.embed_model is None:
+            print("⚠️  No embedding model available from ModelManager; using vector store defaults")
+            Settings.embed_model = None
         
         # Use SentenceSplitter by default (no tokenizer needed)
         use_sentence_splitter = get_config("chunking", "use_sentence_splitter")
@@ -130,7 +147,7 @@ class IndexBuilder:
             print(f"✅ Using SentenceSplitter chunking (chunk_size: {self.chunk_size}, overlap: {self.chunk_overlap})")
         else:
             # Use word-count-based splitting as fallback
-            from utils.chunking_utils import get_word_count_splitter
+            from .utils.chunking_utils import get_word_count_splitter
             
             word_count_ratio = get_config("chunking", "word_count_ratio") or 0.75
             word_chunk_size = int(self.chunk_size * word_count_ratio)
@@ -173,11 +190,13 @@ class IndexBuilder:
         self.storage_context = self.db_config.get_storage_context()     # bound to same collection
 
         # Bind an index to that store; no nodes yet
-        self.index = VectorStoreIndex.from_vector_store(
-            vector_store=self.vector_store,
-            storage_context=self.storage_context,
-            embed_model=self.embed_model,
-        )
+        index_kwargs = {
+            "vector_store": self.vector_store,
+            "storage_context": self.storage_context,
+        }
+        if self.embed_model is not None:
+            index_kwargs["embed_model"] = self.embed_model
+        self.index = VectorStoreIndex.from_vector_store(**index_kwargs)
     
     # Index is now initialized in __init__ - no lazy initialization needed
     
@@ -203,7 +222,7 @@ class IndexBuilder:
             extract_metadata = self.document_processor.should_extract_metadata()
 
             # Get filtered document files (excludes .DS_Store and other system files)
-            from utils.rag_utils import get_document_files
+            from .utils.rag_utils import get_document_files
             document_files = get_document_files(folder_path, file_extensions)
             
             if not document_files:
@@ -365,7 +384,7 @@ class IndexBuilder:
             recursive = self.document_processor.should_use_recursive()
             
             # Get filtered document files (excludes .DS_Store and other system files)
-            from utils.rag_utils import get_document_files
+            from .utils.rag_utils import get_document_files
             document_files = get_document_files(folder_path, file_extensions)
             
             if not document_files:
@@ -614,7 +633,7 @@ class IndexBuilder:
             word_chunk_overlap = int(self.chunk_overlap * word_count_ratio)
             
             from llama_index.core.node_parser.interface import MetadataAwareTextSplitter
-            from utils.chunking_utils import get_word_count_splitter
+            from .utils.chunking_utils import get_word_count_splitter
             
             class WordCountSplitter(MetadataAwareTextSplitter):
                 def __init__(self, chunk_size: int, chunk_overlap: int, **kwargs):

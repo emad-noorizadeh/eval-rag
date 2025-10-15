@@ -21,8 +21,8 @@ import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.rag_utils import MetadataExtractor, DocumentProcessor, create_file_metadata_function, validate_document_folder
-from config import get_config
+from ..utils.rag_utils import MetadataExtractor, DocumentProcessor, create_file_metadata_function, validate_document_folder
+from ..config import get_config
 
 def test_metadata_extractor():
     """Test the MetadataExtractor class"""

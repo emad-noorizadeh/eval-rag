@@ -26,10 +26,7 @@ import requests
 import urllib.request
 import urllib.error
 
-# Add the current directory to the path so we can import our modules
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from url_guardrail import guardrail, block_external_requests
+from ..security import guardrail, block_external_requests
 
 def test_url_guardrail():
     """Test the URL guardrail system"""

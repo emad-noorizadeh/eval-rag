@@ -19,11 +19,11 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from model_manager import ModelManager
-from index_builder import IndexBuilder
-from rag import RAG
-from chat_agent_v2 import ChatAgentV2
-from session_manager import session_manager
+from ..model_manager import ModelManager
+from ..index_builder import IndexBuilder
+from ..rag import RAG
+from ..chat_agent_v2 import ChatAgentV2
+from ..session_manager import session_manager
 import json
 
 def test_context_utilization_frontend():

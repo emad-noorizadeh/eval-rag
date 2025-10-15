@@ -27,9 +27,7 @@ from typing import Dict, Optional, Any
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 # from chat_agent import ChatAgent  # Avoid circular import
-from model_manager import ModelManager
-from index_builder import IndexBuilder
-from config import get_config
+from .config import get_config
 
 
 @dataclass

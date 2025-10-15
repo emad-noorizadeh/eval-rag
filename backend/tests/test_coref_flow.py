@@ -26,7 +26,7 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from utils.conversation_utils import is_ack_or_coref, build_conversation_snippet, validate_evidence_ids
+from ..utils.conversation_utils import is_ack_or_coref, build_conversation_snippet, validate_evidence_ids
 
 def test_is_ack_or_coref():
     """Test acknowledgment and coreference detection"""

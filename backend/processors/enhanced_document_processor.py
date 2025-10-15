@@ -31,9 +31,13 @@ from pathlib import Path
 from llama_index.core import Document
 from llama_index.core.node_parser import SentenceSplitter
 
-from .enhanced_metadata_extractor import EnhancedMetadataExtractor, DocumentMetadata, ChunkMetadata
-from model_manager import ModelManager
-from config import get_config
+from .enhanced_metadata_extractor import (
+    EnhancedMetadataExtractor,
+    DocumentMetadata,
+    ChunkMetadata,
+)
+from ..model_manager import ModelManager
+from ..config import get_config
 
 
 class EnhancedDocumentProcessor:

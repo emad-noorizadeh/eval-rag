@@ -73,13 +73,15 @@ class SystemConfig:
                 }
             },
             
-            # Chunking Configuration
-            "chunking": {
-                "chunk_size": 1024,
-                "chunk_overlap": 20,
-                "min_chunk_size": 100,
-                "max_chunk_size": 4000
-            },
+                # Chunking Configuration
+                "chunking": {
+                    "chunk_size": 1024,
+                    "chunk_overlap": 20,
+                    "min_chunk_size": 100,
+                    "max_chunk_size": 4000,
+                    "use_sentence_splitter": True,  # Use SentenceSplitter (True) or word-count (False)
+                    "word_count_ratio": 0.75  # Multiply chunk_size by this ratio for word count mode
+                },
             
             # API Configuration
             "api": {
@@ -113,8 +115,9 @@ class SystemConfig:
             "models": {
                 "embedding_model": "text-embedding-3-small",
                 "llm_model": "gpt-4o",
-                "temperature": 0.7,
-                "max_tokens": 1000
+                "temperature": 0.0,
+                "max_tokens": 1000,
+                "llm_max_retry": 1
             },
             
             # Logging Configuration - LOCAL ONLY, NO EXTERNAL TELEMETRY
@@ -189,6 +192,7 @@ class SystemConfig:
             "OPENAI_API_KEY": ("models", "api_key"),
             "RAG_EMBEDDING_MODEL": ("models", "embedding_model"),
             "RAG_LLM_MODEL": ("models", "llm_model"),
+            "RAG_LLM_MAX_RETRY": ("models", "llm_max_retry"),
             
             # Logging
             "RAG_LOG_LEVEL": ("logging", "level"),
@@ -199,7 +203,7 @@ class SystemConfig:
             value = os.getenv(env_var)
             if value is not None:
                 # Convert string values to appropriate types
-                if key in ["chunk_size", "chunk_overlap", "port", "max_file_size_mb", "max_tokens"]:
+                if key in ["chunk_size", "chunk_overlap", "port", "max_file_size_mb", "max_tokens", "llm_max_retry"]:
                     value = int(value)
                 elif key in ["temperature", "max_size_mb"]:
                     value = float(value)
@@ -405,3 +409,95 @@ def get_chunking_params() -> tuple:
         get_config("chunking", "chunk_size"),
         get_config("chunking", "chunk_overlap")
     )
+
+def set_chunking_mode(use_sentence_splitter: bool, word_count_ratio: float = 0.75) -> bool:
+    """
+    Set chunking mode.
+    
+    Args:
+        use_sentence_splitter: Use SentenceSplitter (True) or word-count (False)
+        word_count_ratio: Ratio for word count mode
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        config.set("chunking", "use_sentence_splitter", use_sentence_splitter)
+        config.set("chunking", "word_count_ratio", word_count_ratio)
+        return True
+    except Exception as e:
+        print(f"❌ Error updating chunking mode: {e}")
+        return False
+
+def set_word_count_ratio(word_count_ratio: float) -> bool:
+    """
+    Set word count ratio for chunking.
+    
+    Args:
+        word_count_ratio: Ratio to multiply chunk_size by for word count
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        config.set("chunking", "word_count_ratio", word_count_ratio)
+        return True
+    except Exception as e:
+        print(f"❌ Error updating word count ratio: {e}")
+        return False
+
+def show_chunking_config():
+    """Show current chunking configuration"""
+    chunking = get_config("chunking")
+    use_sentence_splitter = chunking.get("use_sentence_splitter", True)
+    word_count_ratio = chunking.get("word_count_ratio", 0.75)
+    chunk_size = chunking.get("chunk_size", 1024)
+    chunk_overlap = chunking.get("chunk_overlap", 20)
+    
+    print("📊 Chunking Configuration:")
+    print(f"   Mode: {'SentenceSplitter' if use_sentence_splitter else 'Word-count-based'}")
+    print(f"   Chunk size: {chunk_size}")
+    print(f"   Chunk overlap: {chunk_overlap}")
+    
+    if not use_sentence_splitter:
+        effective_size = int(chunk_size * word_count_ratio)
+        effective_overlap = int(chunk_overlap * word_count_ratio)
+        print(f"   Word count ratio: {word_count_ratio}")
+        print(f"   Effective chunk size: {effective_size} words")
+        print(f"   Effective chunk overlap: {effective_overlap} words")
+
+if __name__ == "__main__":
+    import sys
+    
+    if len(sys.argv) < 2:
+        print("🔧 Chunking Configuration Manager")
+        print("=" * 35)
+        print()
+        print("Usage:")
+        print("  python config/config.py sentence     # Use SentenceSplitter")
+        print("  python config/config.py wordcount    # Use word-count mode")
+        print("  python config/config.py show         # Show current")
+        print()
+        show_chunking_config()
+        sys.exit(0)
+    
+    command = sys.argv[1].lower()
+    
+    if command == "show":
+        show_chunking_config()
+    elif command == "sentence":
+        if set_chunking_mode(True):
+            print("✅ Switched to SentenceSplitter mode")
+            show_chunking_config()
+        else:
+            print("❌ Failed to update configuration")
+    elif command == "wordcount":
+        ratio = float(sys.argv[2]) if len(sys.argv) > 2 else 0.75
+        if set_chunking_mode(False, ratio):
+            print(f"✅ Switched to word-count mode (ratio: {ratio})")
+            show_chunking_config()
+        else:
+            print("❌ Failed to update configuration")
+    else:
+        print(f"❌ Unknown command: {command}")
+        print("Use 'sentence', 'wordcount', or 'show'")

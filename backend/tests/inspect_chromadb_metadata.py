@@ -23,9 +23,9 @@ import os
 import json
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from model_manager import ModelManager
-from config.database_config import DatabaseConfig
-from config import get_config
+from ..model_manager import ModelManager
+from ..config.database_config import DatabaseConfig
+from ..config import get_config
 
 def inspect_chromadb_metadata():
     """Inspect how metadata is actually stored in ChromaDB"""

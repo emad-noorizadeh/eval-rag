@@ -22,9 +22,9 @@ import sys
 from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from model_manager import ModelManager
-from index_builder import IndexBuilder
-from config import set_config
+from ..model_manager import ModelManager
+from ..index_builder import IndexBuilder
+from ..config import set_config
 
 class TestLogger:
     """Logger to capture test output to file"""

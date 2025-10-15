@@ -17,8 +17,4 @@ Test package for RAG System
 Author: Emad Noorizadeh
 """
 
-# Test modules
-from .test_database_config import test_database_config
-from .test_index_builder import test_index_builder
-
-__all__ = ['test_database_config', 'test_index_builder']
+__all__ = []

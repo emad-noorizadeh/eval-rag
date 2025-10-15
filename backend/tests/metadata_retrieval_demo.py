@@ -37,9 +37,9 @@ from llama_index.core.schema import NodeWithScore, TextNode
 from llama_index.core.vector_stores import VectorStoreQuery
 from llama_index.core.vector_stores.types import VectorStoreQueryResult
 
-from model_manager import ModelManager
-from config.database_config import DatabaseConfig
-from config import get_config, get_data_folder, get_database_path, get_collection_name
+from ..model_manager import ModelManager
+from ..config.database_config import DatabaseConfig
+from ..config import get_config, get_data_folder, get_database_path, get_collection_name
 from processors.hybrid_metadata_extractor import HybridMetadataExtractor
 
 

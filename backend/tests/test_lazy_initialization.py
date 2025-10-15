@@ -21,8 +21,8 @@ import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from model_manager import ModelManager
-from index_builder import IndexBuilder
+from ..model_manager import ModelManager
+from ..index_builder import IndexBuilder
 
 def test_lazy_initialization():
     """Test lazy initialization behavior"""

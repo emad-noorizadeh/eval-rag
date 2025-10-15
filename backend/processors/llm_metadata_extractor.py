@@ -84,7 +84,7 @@ class LLMMetadataExtractor:
         
         # Initialize regex extractor for fallback
         if self.config.fallback_to_regex:
-            from utils.rag_utils import MetadataExtractor
+            from ..utils.rag_utils import MetadataExtractor
             self.regex_extractor = MetadataExtractor(config_getter)
     
     def extract_metadata(self, text: str, use_llm: bool = None) -> ExtractedMetadata:
@@ -313,7 +313,7 @@ class HybridMetadataExtractor:
         
         # Initialize both extractors
         self.llm_extractor = LLMMetadataExtractor(config_getter, model_manager)
-        from utils.rag_utils import MetadataExtractor
+        from ..utils.rag_utils import MetadataExtractor
         self.regex_extractor = MetadataExtractor(config_getter)
     
     def extract_metadata(self, text: str, strategy: str = "smart") -> Dict[str, Any]:
