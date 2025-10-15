@@ -64,7 +64,10 @@ build/
 *.egg
 
 # ChromaDB
-chroma_db/
+chroma_db/*
+!chroma_db/.gitkeep
+chroma_db_backup/
+backend/chroma_db/
 *.db
 *.sqlite
 *.sqlite3
