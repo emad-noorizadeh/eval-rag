@@ -493,10 +493,16 @@ async def get_data_files():
                 "error": "Data folder does not exist"
             }
         
+        allowed_extensions = {'.txt', '.md', '.json', '.pdf'}
         files = []
         for filename in os.listdir(data_folder):
             file_path = os.path.join(data_folder, filename)
             if os.path.isfile(file_path):
+                if filename.startswith('.'):
+                    continue
+                file_extension = os.path.splitext(filename)[1].lower()
+                if file_extension and file_extension not in allowed_extensions:
+                    continue
                 # Get file stats
                 stat = os.stat(file_path)
                 file_info = {
@@ -505,7 +511,7 @@ async def get_data_files():
                     "size_bytes": stat.st_size,
                     "size_mb": round(stat.st_size / (1024 * 1024), 2),
                     "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-                    "extension": os.path.splitext(filename)[1].lower()
+                    "extension": file_extension
                 }
                 files.append(file_info)
         
