@@ -153,7 +153,7 @@ Together, these pieces give you a transparent router: you can inspect the state 
 Sentence-transformer retrieval depends on a local copy of `sentence-transformers/all-MiniLM-L6-v2`. The loader (`backend/setup/minilm_loader.py`) saves the model under a configurable `MODELS_PATH` so the backend can run fully offline.
 
 1. **Choose a model directory**
-   - Default: `/Users/emadn/Projects/models`
+   - Default: `/Users/[username]/Projects/models`
    - Override by exporting `MODELS_PATH=/absolute/path/to/models` (use `~` for home if you prefer; the loader expands it).  
    - Whichever value you pick is persisted and used everywhere that calls `backend.utils.models_path`.
 
