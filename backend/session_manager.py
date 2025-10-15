@@ -75,6 +75,7 @@ class SessionManager:
         self.timeout_minutes = timeout_minutes
         self.cleanup_interval = cleanup_interval
         self.sessions: Dict[str, SessionData] = {}
+        self.auto_extend_enabled = bool(get_config("session", "auto_extend") or False)
         self.lock = threading.RLock()
         
         # Start cleanup thread
@@ -82,6 +83,7 @@ class SessionManager:
         self.cleanup_thread.start()
         
         print(f"✅ SessionManager initialized: {timeout_minutes}min timeout, {cleanup_interval}s cleanup")
+        print(f"   Auto-extend enabled: {self.auto_extend_enabled}")
     
     def create_session(self) -> str:
         """
@@ -161,7 +163,8 @@ class SessionManager:
                 "last_activity": session.last_activity.isoformat(),
                 "is_active": session.is_active,
                 "remaining_time": session.get_remaining_time(self.timeout_minutes),
-                "timeout_minutes": self.timeout_minutes
+                "timeout_minutes": self.timeout_minutes,
+                "auto_extend_enabled": self.auto_extend_enabled
             }
     
     def extend_session(self, session_id: str) -> bool:

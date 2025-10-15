@@ -35,6 +35,7 @@ interface ChatInterfaceProps {
         remainingTime?: number;
         isLoading: boolean;
         error: string | null;
+        autoExtendEnabled: boolean;
     };
     messages: Message[];
     setMessages: (messages: Message[]) => void;

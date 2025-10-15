@@ -189,6 +189,7 @@ You will be prompted (optionally) to update:
 - **OpenAI API key** – stores the key in `config.json` and writes `OPENAI_API_KEY` into `.env` for local runs.
 - **MODELS_PATH** – updates `.env` so the MiniLM loader and retrieval stack use your preferred local models directory.
 - **Model defaults** – embedding/LLM model IDs, temperature, and max tokens all get written back to `config.json`.
+- **Session auto-extend** – toggle whether the UI should auto-renew sessions on user activity (`session.auto_extend`).
 
 Press Enter to keep existing values; the script only overwrites settings you supply. After running it, restart the backend to pick up the new configuration.
 

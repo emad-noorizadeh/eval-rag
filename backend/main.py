@@ -144,6 +144,7 @@ class SessionResponse(BaseModel):
     created_at: str
     remaining_time: int
     timeout_minutes: int
+    auto_extend_enabled: bool
 
 class RAGMetrics(BaseModel):
     # LangGraph agent metrics
@@ -260,7 +261,8 @@ async def create_session(request: SessionCreateRequest = None):
             session_id=session_id,
             created_at=session_info["created_at"],
             remaining_time=session_info["remaining_time"],
-            timeout_minutes=session_info["timeout_minutes"]
+            timeout_minutes=session_info["timeout_minutes"],
+            auto_extend_enabled=session_info.get("auto_extend_enabled", False)
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -289,7 +291,8 @@ async def extend_session(session_id: str):
         session_info = session_manager.get_session_info(session_id)
         return {
             "message": "Session extended successfully",
-            "remaining_time": session_info["remaining_time"]
+            "remaining_time": session_info["remaining_time"],
+            "auto_extend_enabled": session_info.get("auto_extend_enabled", False)
         }
     except HTTPException:
         raise

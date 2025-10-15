@@ -10,6 +10,7 @@ export interface SessionInfo {
     created_at: string;
     remaining_time: number;
     timeout_minutes: number;
+    auto_extend_enabled?: boolean;
 }
 
 export interface SessionCreateRequest {
@@ -22,6 +23,7 @@ export interface SessionCreateResponse {
     created_at: string;
     remaining_time: number;
     timeout_minutes: number;
+    auto_extend_enabled?: boolean;
 }
 
 export interface SessionExtendResponse {
@@ -33,6 +35,7 @@ class SessionService {
     private sessionId: string | null = null;
     private sessionTimer: NodeJS.Timeout | null = null;
     private onSessionExpired: (() => void) | null = null;
+    private autoExtendEnabled = false;
 
     constructor() {
         // Don't load session from localStorage during SSR
@@ -58,6 +61,7 @@ class SessionService {
 
             const sessionData: SessionCreateResponse = await response.json();
             this.sessionId = sessionData.session_id;
+            this.setAutoExtendEnabled(sessionData.auto_extend_enabled);
 
             // Save to localStorage
             this.saveSessionToStorage(sessionData);
@@ -104,7 +108,9 @@ class SessionService {
                 throw new Error(`Failed to get session info: ${response.statusText}`);
             }
 
-            return await response.json();
+            const info: SessionInfo = await response.json();
+            this.setAutoExtendEnabled(info.auto_extend_enabled);
+            return info;
         } catch (error) {
             console.error('Error getting session info:', error);
             return null;
@@ -136,6 +142,11 @@ class SessionService {
 
             const result = await response.json();
 
+            // auto_extend flag may be returned for updated configuration
+            if (typeof result.auto_extend_enabled !== 'undefined') {
+                this.setAutoExtendEnabled(result.auto_extend_enabled);
+            }
+
             // Update localStorage with new remaining time
             this.updateSessionInStorage(result.remaining_time);
 
@@ -165,6 +176,10 @@ class SessionService {
             this.clearSession();
             return false;
         }
+    }
+
+    isAutoExtendEnabled(): boolean {
+        return this.autoExtendEnabled;
     }
 
     /**
@@ -202,6 +217,10 @@ class SessionService {
         }, 5 * 60 * 1000); // 5 minutes
     }
 
+    private setAutoExtendEnabled(value?: boolean): void {
+        this.autoExtendEnabled = Boolean(value);
+    }
+
     /**
      * Load session from localStorage
      */
@@ -222,6 +241,7 @@ class SessionService {
                 // Check if session is still valid (less than 30 minutes old)
                 if (sessionAge < thirtyMinutes) {
                     this.sessionId = sessionData.session_id;
+                    this.setAutoExtendEnabled(sessionData.auto_extend_enabled);
                     this.startSessionMonitoring();
                 } else {
                     // Session expired, clear it
@@ -251,6 +271,7 @@ class SessionService {
                 timestamp: Date.now(),
                 created_at: sessionData.created_at,
                 timeout_minutes: sessionData.timeout_minutes,
+                auto_extend_enabled: sessionData.auto_extend_enabled,
             };
             localStorage.setItem('rag_session', JSON.stringify(sessionInfo));
         } catch (error) {
@@ -272,6 +293,7 @@ class SessionService {
             if (stored) {
                 const sessionData = JSON.parse(stored);
                 sessionData.remaining_time = remainingTime;
+                sessionData.auto_extend_enabled = this.autoExtendEnabled;
                 localStorage.setItem('rag_session', JSON.stringify(sessionData));
             }
         } catch (error) {
@@ -292,6 +314,7 @@ class SessionService {
         if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
             localStorage.removeItem('rag_session');
         }
+        this.autoExtendEnabled = false;
     }
 
     /**
@@ -301,6 +324,7 @@ class SessionService {
         isValid: boolean;
         sessionId: string | null;
         remainingTime?: number;
+        autoExtendEnabled: boolean;
     }> {
         const isValid = await this.isSessionValid();
         const sessionInfo = isValid ? await this.getSessionInfo() : null;
@@ -309,6 +333,7 @@ class SessionService {
             isValid,
             sessionId: this.sessionId,
             remainingTime: sessionInfo?.remaining_time,
+            autoExtendEnabled: this.autoExtendEnabled,
         };
     }
 }

@@ -163,6 +163,13 @@ def configure_model_defaults() -> None:
             print("⚠️  Max tokens must be an integer. Keeping existing value.")
 
 
+def configure_session_behavior() -> None:
+    """Toggle session auto-extend behaviour."""
+    current_auto_extend = bool(get_config("session", "auto_extend") or False)
+    auto_extend = prompt_bool("Automatically extend sessions on activity?", current_auto_extend)
+    set_config("session", "auto_extend", auto_extend)
+
+
 def main() -> None:
     print("=" * 60)
     print("RAG Environment Setup")
@@ -173,6 +180,7 @@ def main() -> None:
     configure_openai()
     configure_models_path()
     configure_model_defaults()
+    configure_session_behavior()
 
     system_config.save_config()
     print("\n✓ Configuration saved. Restart the backend to apply changes.")

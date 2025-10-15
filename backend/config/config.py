@@ -108,7 +108,8 @@ class SystemConfig:
                 "timeout_minutes": 30,
                 "cleanup_interval": 300,
                 "data_folder": "./data",
-                "collection_prefix": "session"
+                "collection_prefix": "session",
+                "auto_extend": False
             },
             
             # Model Configuration
@@ -189,6 +190,13 @@ class SystemConfig:
             # API
             "RAG_API_HOST": ("api", "host"),
             "RAG_API_PORT": ("api", "port"),
+
+            # Session
+            "RAG_SESSION_TIMEOUT": ("session", "timeout_minutes"),
+            "RAG_SESSION_CLEANUP_INTERVAL": ("session", "cleanup_interval"),
+            "RAG_SESSION_DATA_FOLDER": ("session", "data_folder"),
+            "RAG_SESSION_COLLECTION_PREFIX": ("session", "collection_prefix"),
+            "RAG_SESSION_AUTO_EXTEND": ("session", "auto_extend"),
             
             # Models
             "OPENAI_API_KEY": ("models", "api_key"),
@@ -207,11 +215,11 @@ class SystemConfig:
             value = os.getenv(env_var)
             if value is not None:
                 # Convert string values to appropriate types
-                if key in ["chunk_size", "chunk_overlap", "port", "max_file_size_mb", "max_tokens", "llm_max_retry"]:
+                if key in ["chunk_size", "chunk_overlap", "port", "max_file_size_mb", "max_tokens", "llm_max_retry", "timeout_minutes", "cleanup_interval"]:
                     value = int(value)
                 elif key in ["temperature", "max_size_mb"]:
                     value = float(value)
-                elif key in ["enable_caching", "api_key_required", "enable_cors", "use_openai_url"]:
+                elif key in ["enable_caching", "api_key_required", "enable_cors", "use_openai_url", "auto_extend"]:
                     value = value.lower() in ['true', '1', 'yes', 'on']
                 elif key == "cors_origins":
                     value = value.split(',')

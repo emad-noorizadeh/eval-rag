@@ -12,6 +12,7 @@ export interface SessionStatus {
     remainingTime?: number;
     isLoading: boolean;
     error: string | null;
+    autoExtendEnabled: boolean;
 }
 
 export function useSession() {
@@ -20,7 +21,8 @@ export function useSession() {
         sessionId: null,
         remainingTime: undefined,
         isLoading: true,
-        error: null
+        error: null,
+        autoExtendEnabled: sessionService.isAutoExtendEnabled()
     });
 
     const sessionInitialized = useRef(false);
@@ -54,7 +56,8 @@ export function useSession() {
                             sessionId: currentSessionId,
                             remainingTime: sessionInfo?.remaining_time,
                             isLoading: false,
-                            error: null
+                            error: null,
+                            autoExtendEnabled: sessionService.isAutoExtendEnabled()
                         });
                         return;
                     } else {
@@ -76,7 +79,8 @@ export function useSession() {
                 sessionId: sessionData.session_id,
                 remainingTime: sessionData.remaining_time,
                 isLoading: false,
-                error: null
+                error: null,
+                autoExtendEnabled: sessionService.isAutoExtendEnabled()
             });
         } catch (error) {
             console.error('Error initializing session:', error);
@@ -86,7 +90,8 @@ export function useSession() {
                 sessionId: null,
                 remainingTime: undefined,
                 isLoading: false,
-                error: 'Failed to initialize session. Please refresh the page.'
+                error: 'Failed to initialize session. Please refresh the page.',
+                autoExtendEnabled: sessionService.isAutoExtendEnabled()
             });
         }
     }, []);
@@ -111,7 +116,8 @@ export function useSession() {
                     setSessionStatus(prev => ({
                         ...prev,
                         isValid: false,
-                        error: 'Session expired and failed to create new session. Please refresh the page.'
+                        error: 'Session expired and failed to create new session. Please refresh the page.',
+                        autoExtendEnabled: sessionService.isAutoExtendEnabled()
                     }));
                 }
                 return;
@@ -120,7 +126,8 @@ export function useSession() {
             const status = await sessionService.getSessionStatus();
             setSessionStatus(prev => ({
                 ...prev,
-                remainingTime: status.remainingTime
+                remainingTime: status.remainingTime,
+                autoExtendEnabled: status.autoExtendEnabled
             }));
         } catch (error) {
             console.error('Error extending session:', error);
@@ -128,7 +135,8 @@ export function useSession() {
             setSessionStatus(prev => ({
                 ...prev,
                 isValid: false,
-                error: 'Session error. Please refresh the page.'
+                error: 'Session error. Please refresh the page.',
+                autoExtendEnabled: sessionService.isAutoExtendEnabled()
             }));
         }
     }, [sessionStatus.sessionId, sessionStatus.isValid]);
@@ -143,7 +151,8 @@ export function useSession() {
             sessionId: null,
             remainingTime: undefined,
             isLoading: false,
-            error: null
+            error: null,
+            autoExtendEnabled: sessionService.isAutoExtendEnabled()
         });
         sessionInitialized.current = false;
     }, [sessionStatus.sessionId]);
@@ -178,7 +187,8 @@ export function useSession() {
                     setSessionStatus(prev => ({
                         ...prev,
                         isValid: false,
-                        error: 'Session expired. Please refresh the page.'
+                        error: 'Session expired. Please refresh the page.',
+                        autoExtendEnabled: sessionService.isAutoExtendEnabled()
                     }));
                     if (sessionTimer.current) {
                         clearInterval(sessionTimer.current);
@@ -188,7 +198,8 @@ export function useSession() {
                     const status = await sessionService.getSessionStatus();
                     setSessionStatus(prev => ({
                         ...prev,
-                        remainingTime: status.remainingTime
+                        remainingTime: status.remainingTime,
+                        autoExtendEnabled: status.autoExtendEnabled
                     }));
                 }
             }, 2 * 60 * 1000); // 2 minutes
@@ -225,7 +236,8 @@ export function useSession() {
                         isValid: false,
                         sessionId: null,
                         remainingTime: undefined,
-                        error: 'Session expired. Please refresh the page.'
+                        error: 'Session expired. Please refresh the page.',
+                        autoExtendEnabled: sessionService.isAutoExtendEnabled()
                     };
                 }
             });
@@ -236,6 +248,10 @@ export function useSession() {
 
     // Set up activity-based session extension
     useEffect(() => {
+        if (!sessionStatus.autoExtendEnabled) {
+            return;
+        }
+
         const handleUserActivity = () => {
             if (!sessionStatus.isValid || !sessionStatus.sessionId) {
                 return;
@@ -266,7 +282,7 @@ export function useSession() {
             document.removeEventListener('scroll', handleUserActivity);
             document.removeEventListener('mousemove', handleUserActivity);
         };
-    }, [sessionStatus.isValid, sessionStatus.sessionId, extendSession]);
+    }, [sessionStatus.isValid, sessionStatus.sessionId, sessionStatus.autoExtendEnabled, extendSession]);
 
     // Initialize session on mount (only once)
     useEffect(() => {
