@@ -1,0 +1,47 @@
+# RAG Testing Interface Backend Dependencies
+# Author: Emad Noorizadeh
+
+# Core Framework
+fastapi>=0.110.0
+uvicorn[standard]>=0.23.0
+
+# Database & Vector Store
+chromadb>=0.5.0
+
+# Document Processing
+python-multipart>=0.0.20
+
+# LlamaIndex Ecosystem
+llama-index>=0.11.0
+llama-index-embeddings-openai>=0.2.0
+llama-index-llms-openai>=0.2.0
+llama-index-vector-stores-chroma>=0.3.0
+
+# OpenAI
+openai>=1.2.0
+
+# LangGraph for Routing
+langgraph>=0.6.7,<0.7.0
+langgraph-checkpoint>=2.1.1,<3.0.0
+langgraph-checkpoint-sqlite>=2.0.6,<3.0.0
+langgraph-prebuilt>=0.6.4,<0.7.0
+langgraph-sdk>=0.2.6,<0.3.0
+
+# Document Processing
+PyMuPDF>=1.24.0
+
+# NLP & Text Processing
+spacy>=3.7.0
+sentence-transformers>=2.5.0
+
+# Data Processing
+pandas>=1.5.0
+numpy>=1.21.0
+typing_extensions>=4.9.0
+
+# Utilities
+python-dotenv>=0.19.0
+pydantic>=2.7.0
+
+# Telemetry Disable (Local module)
+# disable_telemetry.py - Disables all external telemetry and logging

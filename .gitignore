@@ -75,6 +75,7 @@ backend/chroma_db/
 # Data files
 data/
 index/
+backend/tests/*.txt
 # Ignore specific JSON files (not package.json, tsconfig.json, etc.)
 package-lock.json
 yarn.lock
@@ -92,8 +93,6 @@ yarn.lock
 !eslint.config.*
 !requirements.txt
 !**/requirements.txt
-*.txt
-!requirements.txt
 *.pdf
 *.docx
 *.doc
