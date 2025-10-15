@@ -111,14 +111,18 @@ export default function DocumentList() {
             if (response.ok) {
                 const data: DataFilesResponse = await response.json();
                 setFiles(data.files);
-                setFolderPath(data.folder_path);
-                setTotalSize(data.total_size_mb);
+                setFolderPath(data.folder_path ?? '');
+                const sizeValue = typeof data.total_size_mb === 'number' && Number.isFinite(data.total_size_mb)
+                    ? data.total_size_mb
+                    : 0;
+                setTotalSize(sizeValue);
                 if (data.error) {
                     setError(data.error);
                 }
             } else {
                 const errorData = await response.json();
                 setError(`Error: ${errorData.detail}`);
+                setTotalSize(0);
             }
         } catch (error) {
             if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
@@ -126,6 +130,7 @@ export default function DocumentList() {
             } else {
                 setError(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
             }
+            setTotalSize(0);
         } finally {
             setLoading(false);
         }
@@ -249,6 +254,8 @@ export default function DocumentList() {
         );
     }
 
+    const totalSizeDisplay = Number.isFinite(totalSize) ? totalSize : 0;
+
     return (
         <div className="bg-white rounded-lg shadow-md p-6">
             <div className="mb-6">
@@ -256,7 +263,7 @@ export default function DocumentList() {
                     Data Files ({files.length})
                 </h2>
                 <p className="text-sm text-gray-600 mt-1">
-                    {folderPath} • Total size: {totalSize.toFixed(2)} MB
+                    {folderPath || 'Data folder'} • Total size: {totalSizeDisplay.toFixed(2)} MB
                 </p>
             </div>
 
