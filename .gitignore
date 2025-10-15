@@ -73,8 +73,10 @@ backend/chroma_db/
 *.sqlite3
 
 # Data files
-data/
+data/*
+!data/.gitkeep
 index/
+backend/data/
 backend/tests/*.txt
 # Ignore specific JSON files (not package.json, tsconfig.json, etc.)
 package-lock.json
