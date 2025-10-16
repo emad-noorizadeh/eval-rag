@@ -35,13 +35,20 @@ interface ChunkingConfig {
     };
 }
 
+interface CollectionSummary {
+    collection_name?: string;
+    db_path?: string;
+    documents?: number;
+    chunks?: number;
+    total_documents?: number;
+    total_chunks?: number;
+}
+
 interface SystemInfo {
-    count: number;
-    collection_info: {
-        collection_name: string;
-        total_documents: number;
-        database_path: string;
-    };
+    dbPath: string | null;
+    collectionName: string | null;
+    documents: number | null;
+    chunks: number | null;
 }
 
 export default function Settings() {
@@ -69,7 +76,32 @@ export default function Settings() {
 
             setChatConfig(chatResponse);
             setChunkingConfig(chunkingResponse);
-            setSystemInfo(documentsResponse);
+            const collectionInfo: CollectionSummary = documentsResponse.collection || {};
+            const metadataSummary: CollectionSummary =
+                documentsResponse.metadata?.collection_info ||
+                {
+                    total_documents: documentsResponse.metadata?.total_documents,
+                    total_chunks: documentsResponse.metadata?.total_chunks,
+                };
+
+            const documentsCount =
+                collectionInfo.documents ??
+                metadataSummary.total_documents ??
+                documentsResponse.metadata?.total_documents ??
+                null;
+
+            const chunksCount =
+                collectionInfo.chunks ??
+                metadataSummary.total_chunks ??
+                documentsResponse.metadata?.total_chunks ??
+                null;
+
+            setSystemInfo({
+                dbPath: collectionInfo.db_path ?? chatResponse?.db_path ?? null,
+                collectionName: collectionInfo.collection_name ?? chatResponse?.collection_name ?? null,
+                documents: typeof documentsCount === 'number' ? documentsCount : null,
+                chunks: typeof chunksCount === 'number' ? chunksCount : null,
+            });
 
         } catch (err) {
             console.error('Error fetching configuration:', err);
@@ -79,14 +111,7 @@ export default function Settings() {
         }
     };
 
-    const formatValue = (value: any): string => {
-        if (value === null || value === undefined) return 'N/A';
-        if (typeof value === 'boolean') return value ? 'Yes' : 'No';
-        if (typeof value === 'object') return JSON.stringify(value, null, 2);
-        return String(value);
-    };
-
-    const getStatusColor = (value: any): string => {
+    const getStatusColor = (value: number | boolean | null | undefined): string => {
         if (typeof value === 'boolean') return value ? 'text-green-600' : 'text-red-600';
         if (typeof value === 'number' && value > 0) return 'text-green-600';
         return 'text-gray-600';
@@ -149,17 +174,17 @@ export default function Settings() {
                         </div>
                     </div>
                     <div className="space-y-3">
-                       <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                           <span className="font-medium text-gray-700">Total Documents:</span>
-                            <span className={`font-medium ${getStatusColor(systemInfo?.count)}`}>
-                                {systemInfo?.count ?? 'N/A'}
+                        <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                            <span className="font-medium text-gray-700">Total Documents:</span>
+                            <span className={`font-medium ${getStatusColor(systemInfo?.documents)}`}>
+                                {systemInfo?.documents ?? 'N/A'}
                             </span>
                         </div>
                         <div className="flex justify-between items-center py-2 border-b border-gray-100">
                             <span className="font-medium text-gray-700">Index Status:</span>
-                            <span className={systemInfo?.count && systemInfo.count > 0 ? 'text-green-600 font-medium' : 'text-yellow-600'}>
-                                {systemInfo?.count && systemInfo.count > 0
-                                    ? `${systemInfo.count} documents indexed`
+                            <span className={systemInfo?.documents && systemInfo.documents > 0 ? 'text-green-600 font-medium' : 'text-yellow-600'}>
+                                {systemInfo?.documents && systemInfo.documents > 0
+                                    ? `${systemInfo.documents} documents / ${systemInfo.chunks ?? '0'} chunks`
                                     : 'Index empty'}
                             </span>
                         </div>

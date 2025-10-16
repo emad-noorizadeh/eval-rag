@@ -9,20 +9,36 @@ const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:9000';
 
 export async function GET() {
     try {
-        // Use the new metadata endpoint to get all document metadata
-        const response = await fetch(`${BACKEND_URL}/documents/metadata`, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-        });
+        const [collectionResponse, metadataResponse] = await Promise.all([
+            fetch(`${BACKEND_URL}/collection/info`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            }),
+            fetch(`${BACKEND_URL}/documents/metadata`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            })
+        ]);
 
-        if (!response.ok) {
-            throw new Error(`Backend responded with status: ${response.status}`);
+        if (!collectionResponse.ok) {
+            throw new Error(`Collection info request failed with status: ${collectionResponse.status}`);
         }
 
-        const data = await response.json();
-        return NextResponse.json(data);
+        if (!metadataResponse.ok) {
+            throw new Error(`Documents metadata request failed with status: ${metadataResponse.status}`);
+        }
+
+        const collection = await collectionResponse.json();
+        const metadata = await metadataResponse.json();
+
+        return NextResponse.json({
+            collection,
+            metadata,
+        });
     } catch (error) {
         console.error('Error fetching documents metadata:', error);
         return NextResponse.json(
