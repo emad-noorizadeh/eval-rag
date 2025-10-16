@@ -421,61 +421,67 @@ export default function ChatInterface({
                             )}
                         </div>
                     ) : (
-                        messages.map((message) => (
-                            <div
-                                key={message.id}
-                                className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
-                            >
+                        messages.map((message) => {
+                            const displayText = (!message.isUser && message.metrics?.abstained)
+                                ? "This question cannot be answered with the available information."
+                                : message.text;
+
+                            return (
                                 <div
-                                    className={`max-w-[80%] rounded-lg p-3 ${message.isUser
-                                        ? 'bg-blue-500 text-white'
-                                        : 'bg-gray-100 text-gray-900'
-                                        }`}
+                                    key={message.id}
+                                    className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
                                 >
-                                    {showDebugPanel &&
-                                        message.metrics?.context_utilization &&
-                                        typeof message.metrics.context_utilization === 'object' &&
-                                        'supported_terms_per_sentence' in message.metrics.context_utilization ? (
-                                        <HighlightedText
-                                            text={message.text}
-                                            supportedTerms={message.metrics.context_utilization.supported_terms_per_sentence?.flatMap(s => s.supported_terms) || []}
-                                            supportedEntities={message.metrics.context_utilization.supported_entities?.items || []}
-                                        />
-                                    ) : (
-                                        <p className="whitespace-pre-wrap text-left">{message.text}</p>
-                                    )}
-                                    {message.sources && message.sources.length > 0 && (
-                                        <div className="mt-2 pt-2 border-t border-gray-300">
-                                            <button
-                                                onClick={() => toggleSources(message.id)}
-                                                className="flex items-center text-xs font-semibold mb-1 hover:text-blue-600 transition-colors"
-                                            >
-                                                <span className="mr-1">
-                                                    {expandedSources.has(message.id) ? '▼' : '▶'}
-                                                </span>
-                                                Sources ({message.sources.length})
-                                            </button>
-                                            {expandedSources.has(message.id) && (
-                                                <div className="mt-2 space-y-2">
-                                                    {message.sources.map((source, index) => (
-                                                        <div key={index} className="text-xs bg-gray-200 rounded p-2">
-                                                            <p className="font-medium">Source {index + 1}</p>
-                                                            <p className="text-gray-600 line-clamp-2">{source.text}</p>
-                                                            <p className="text-gray-500">
-                                                                Similarity: {source.similarity ? source.similarity.toFixed(3) : 'N/A'}
-                                                            </p>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                    <p className="text-xs opacity-70 mt-1">
-                                        {message.timestamp.toLocaleTimeString()}
-                                    </p>
+                                    <div
+                                        className={`max-w-[80%] rounded-lg p-3 ${message.isUser
+                                            ? 'bg-blue-500 text-white'
+                                            : 'bg-gray-100 text-gray-900'
+                                            }`}
+                                    >
+                                        {showDebugPanel &&
+                                            message.metrics?.context_utilization &&
+                                            typeof message.metrics.context_utilization === 'object' &&
+                                            'supported_terms_per_sentence' in message.metrics.context_utilization ? (
+                                            <HighlightedText
+                                                text={displayText}
+                                                supportedTerms={message.metrics.context_utilization.supported_terms_per_sentence?.flatMap(s => s.supported_terms) || []}
+                                                supportedEntities={message.metrics.context_utilization.supported_entities?.items || []}
+                                            />
+                                        ) : (
+                                            <p className="whitespace-pre-wrap text-left">{displayText}</p>
+                                        )}
+                                        {message.sources && message.sources.length > 0 && (
+                                            <div className="mt-2 pt-2 border-t border-gray-300">
+                                                <button
+                                                    onClick={() => toggleSources(message.id)}
+                                                    className="flex items-center text-xs font-semibold mb-1 hover:text-blue-600 transition-colors"
+                                                >
+                                                    <span className="mr-1">
+                                                        {expandedSources.has(message.id) ? '▼' : '▶'}
+                                                    </span>
+                                                    Sources ({message.sources.length})
+                                                </button>
+                                                {expandedSources.has(message.id) && (
+                                                    <div className="mt-2 space-y-2">
+                                                        {message.sources.map((source, index) => (
+                                                            <div key={index} className="text-xs bg-gray-200 rounded p-2">
+                                                                <p className="font-medium">Source {index + 1}</p>
+                                                                <p className="text-gray-600 line-clamp-2">{source.text}</p>
+                                                                <p className="text-gray-500">
+                                                                    Similarity: {source.similarity ? source.similarity.toFixed(3) : 'N/A'}
+                                                                </p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                        <p className="text-xs opacity-70 mt-1">
+                                            {message.timestamp.toLocaleTimeString()}
+                                        </p>
+                                    </div>
                                 </div>
-                            </div>
-                        ))
+                            );
+                        })
                     )}
                     {loading && (
                         <div className="flex justify-start">
