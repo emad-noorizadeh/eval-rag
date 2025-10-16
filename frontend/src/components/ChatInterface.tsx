@@ -224,7 +224,7 @@ export default function ChatInterface({
             id: message.id,
             text: message.text,
             isUser: message.isUser,
-            timestamp: message.timestamp,
+            timestamp: message.timestamp instanceof Date ? message.timestamp.toISOString() : message.timestamp,
         }));
 
         const minimalTrimmed = minimalMessages.slice(-Math.min(10, minimalMessages.length));
