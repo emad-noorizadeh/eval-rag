@@ -239,9 +239,20 @@ export default function ChatInterface({
 
         let saved = false;
 
+        const serialize = (candidate: Message[]) =>
+            JSON.stringify(candidate, (_key, value) => {
+                if (value instanceof Date) {
+                    return value.toISOString();
+                }
+                if (value instanceof Set) {
+                    return Array.from(value);
+                }
+                return value;
+            });
+
         for (const candidate of attempts) {
             try {
-                localStorage.setItem(storageKey, JSON.stringify(candidate));
+                localStorage.setItem(storageKey, serialize(candidate));
                 saved = true;
                 break;
             } catch (error) {
