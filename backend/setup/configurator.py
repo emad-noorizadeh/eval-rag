@@ -163,6 +163,31 @@ def configure_model_defaults() -> None:
             print("⚠️  Max tokens must be an integer. Keeping existing value.")
 
 
+def configure_cors() -> None:
+    """Allow user to append trusted frontend origins for CORS."""
+    current_origins = get_config("api", "cors_origins") or []
+    if current_origins:
+        print("\nCurrent CORS origins:")
+        for origin in current_origins:
+            print(f"  - {origin}")
+    else:
+        print("\nNo CORS origins configured yet.")
+
+    new_origins_input = prompt(
+        "Add frontend origins (comma-separated, e.g., http://192.168.1.10:4000). Leave blank to skip",
+        ""
+    )
+
+    if new_origins_input:
+        new_origins = [origin.strip() for origin in new_origins_input.split(",") if origin.strip()]
+        if new_origins:
+            merged = current_origins + [origin for origin in new_origins if origin not in current_origins]
+            set_config("api", "cors_origins", merged)
+            print("✓ Updated CORS origins:")
+            for origin in merged:
+                print(f"  - {origin}")
+
+
 def configure_session_behavior() -> None:
     """Toggle session auto-extend behaviour."""
     current_auto_extend = bool(get_config("session", "auto_extend") or False)
@@ -180,6 +205,7 @@ def main() -> None:
     configure_openai()
     configure_models_path()
     configure_model_defaults()
+    configure_cors()
     configure_session_behavior()
 
     system_config.save_config()
