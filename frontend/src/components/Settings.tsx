@@ -149,16 +149,18 @@ export default function Settings() {
                         </div>
                     </div>
                     <div className="space-y-3">
-                        <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                            <span className="font-medium text-gray-700">Total Documents:</span>
-                            <span className={`font-medium ${getStatusColor(systemInfo?.collection_info?.total_documents)}`}>
-                                {formatValue(systemInfo?.collection_info?.total_documents)}
+                       <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                           <span className="font-medium text-gray-700">Total Documents:</span>
+                            <span className={`font-medium ${getStatusColor(systemInfo?.count)}`}>
+                                {systemInfo?.count ?? 'N/A'}
                             </span>
                         </div>
                         <div className="flex justify-between items-center py-2 border-b border-gray-100">
                             <span className="font-medium text-gray-700">Index Status:</span>
-                            <span className="text-green-600 font-medium">
-                                {systemInfo?.count > 0 ? 'Active' : 'Empty'}
+                            <span className={systemInfo?.count && systemInfo.count > 0 ? 'text-green-600 font-medium' : 'text-yellow-600'}>
+                                {systemInfo?.count && systemInfo.count > 0
+                                    ? `${systemInfo.count} documents indexed`
+                                    : 'Index empty'}
                             </span>
                         </div>
                     </div>
