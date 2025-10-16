@@ -18,15 +18,18 @@ Modern evaluation harness for Retrieval-Augmented Generation (RAG) systems. The 
 ## Repository Layout
 
 ```
-frontend/                # Next.js 14 application
+frontend/                # Next.js application
 backend/                 # FastAPI backend + router/agent
 ├── main.py              # API entry point
 ├── config/              # Config loader + Chroma safeguards
-├── router_graph.py      # Legacy router (kept for reference/tests)
+├── router_graph.py      # Intelligent router
 ├── rag.py               # RAG answer generation pipeline
 ├── utils/               # Helpers (conversation utils, metadata, etc.)
 └── scripts/             # CLI utilities (create/delete index, etc.)
-chroma_db/               # Persistent Chroma storage (generated)
+data/                    # Source documents (ignored except for .gitkeep)
+chroma_db/               # Persistent Chroma storage
+index/                   # Derived document metadata JSON
+logs/                    # Backend log outputs
 README.md
 ```
 
