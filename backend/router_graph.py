@@ -279,6 +279,27 @@ class SimpleRouterApp:
             state["topic_hint"] = interpreted_question
 
         sources = self.chat_agent._extract_sources_from_rag(rag_response)
+        decision = state.get("decision")
+        retrieval_error = getattr(self.rag, "last_retrieval_error", None)
+        route_metrics = metrics.get("route_metrics") or {}
+        generated_by = "answer_llm"
+
+        if state.get("frustration_triggered"):
+            generated_by = "frustration_handler"
+        elif decision == "clarification":
+            generated_by = "clarification_guard"
+        elif decision == "abstain":
+            if route_metrics.get("decision") == "error" or retrieval_error:
+                generated_by = "retrieval_error_handler"
+            elif not route_metrics.get("above_threshold", False):
+                generated_by = "router_guard"
+            else:
+                generated_by = "answer_guard"
+
+        route_metrics["generated_by"] = generated_by
+        metrics["generated_by"] = generated_by
+        metrics["route_metrics"] = route_metrics
+
         response = {
             "answer": state.get("answer_text", ""),
             "session_id": state.get("session_id"),
@@ -292,7 +313,7 @@ class SimpleRouterApp:
                 "threshold": self.config.similarity_threshold,
                 "routing_strategy": self.config.routing_strategy.value,
             },
-            "generated_by": "answer_llm",
+            "generated_by": generated_by,
         }
 
         if state.get("appended_history"):
@@ -300,16 +321,18 @@ class SimpleRouterApp:
         if state.get("clarification_question"):
             response["clarification_question"] = state.get("clarification_question")
 
-        retrieval_error = getattr(self.rag, "last_retrieval_error", None)
         if retrieval_error and decision != "clarification":
             response["answer"] = (
                 "I ran into a connection issue while retrieving information. "
                 "Please try again in a moment or adjust your question."
             )
+            response["generated_by"] = "retrieval_error_handler"
+            metrics["generated_by"] = "retrieval_error_handler"
             state["awaiting_clarification"] = False
             state["last_clarification"] = ""
             metrics["route_metrics"]["decision"] = "error"
             metrics["route_metrics"]["retrieval_error"] = retrieval_error
+            metrics["route_metrics"]["generated_by"] = "retrieval_error_handler"
 
         messages.append({"role": "assistant", "content": response["answer"]})
         state["messages"] = messages

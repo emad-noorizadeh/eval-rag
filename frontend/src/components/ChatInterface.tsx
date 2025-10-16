@@ -52,6 +52,113 @@ const MAX_SAVED_SUPPORTED_TERMS = 120;
 const MAX_SAVED_SUPPORTED_ENTITIES = 60;
 const MAX_SAVED_SENTENCES = 10;
 const MAX_TERMS_PER_SENTENCE = 12;
+const CHAT_STORAGE_PREFIX = 'chatMessages_';
+const MAX_SOURCE_METADATA_ENTRIES = 12;
+const MAX_SOURCE_METADATA_STRING_LENGTH = 500;
+const MAX_SOURCE_METADATA_ARRAY_LENGTH = 8;
+const MAX_SOURCE_METADATA_DEPTH = 2;
+
+const getChatStorageKey = (sessionId: string) => `${CHAT_STORAGE_PREFIX}${sessionId}`;
+
+const sanitizeMetadataValueForStorage = (value: any, depth = 0): any => {
+    if (value === null || value === undefined) {
+        return value;
+    }
+
+    if (typeof value === 'string') {
+        return value.length > MAX_SOURCE_METADATA_STRING_LENGTH
+            ? value.slice(0, MAX_SOURCE_METADATA_STRING_LENGTH) + '...'
+            : value;
+    }
+
+    if (typeof value === 'number' || typeof value === 'boolean') {
+        return value;
+    }
+
+    if (typeof value === 'bigint') {
+        return value.toString();
+    }
+
+    if (value instanceof Date) {
+        return value.toISOString();
+    }
+
+    if (Array.isArray(value)) {
+        if (depth >= MAX_SOURCE_METADATA_DEPTH) {
+            return value.slice(0, MAX_SOURCE_METADATA_ARRAY_LENGTH);
+        }
+        return value
+            .slice(0, MAX_SOURCE_METADATA_ARRAY_LENGTH)
+            .map(item => sanitizeMetadataValueForStorage(item, depth + 1));
+    }
+
+    if (typeof value === 'object') {
+        if (depth >= MAX_SOURCE_METADATA_DEPTH) {
+            return { truncated: true };
+        }
+        const entries = Object.entries(value).slice(0, MAX_SOURCE_METADATA_ENTRIES);
+        const result: Record<string, any> = {};
+        for (const [key, val] of entries) {
+            const sanitized = sanitizeMetadataValueForStorage(val, depth + 1);
+            if (sanitized !== undefined) {
+                result[key] = sanitized;
+            }
+        }
+        return result;
+    }
+
+    return undefined;
+};
+
+const sanitizeSourceForStorage = (source: any) => {
+    if (!source || typeof source !== 'object') {
+        return source;
+    }
+
+    const sanitized: Record<string, any> = {};
+
+    if ('id' in source) sanitized.id = source.id;
+    if ('chunk_id' in source) sanitized.chunk_id = source.chunk_id;
+    if ('doc_id' in source) sanitized.doc_id = source.doc_id;
+    if ('document_id' in source) sanitized.document_id = source.document_id;
+    if ('page' in source) sanitized.page = source.page;
+    if ('score' in source) sanitized.score = source.score;
+    if ('distance' in source) sanitized.distance = source.distance;
+    if ('similarity' in source) sanitized.similarity = source.similarity;
+    if ('title' in source && typeof source.title === 'string') {
+        sanitized.title = source.title;
+    }
+    if ('filepath' in source && typeof source.filepath === 'string') {
+        sanitized.filepath = source.filepath;
+    }
+
+    sanitized.text = typeof source.text === 'string'
+        ? source.text.slice(0, MAX_SAVED_SOURCE_TEXT)
+        : '';
+
+    if (source.metadata && typeof source.metadata === 'object') {
+        sanitized.metadata = sanitizeMetadataValueForStorage(source.metadata);
+    }
+
+    return sanitized;
+};
+
+const cleanupChatStorage = (currentKey: string): number => {
+    if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+        return 0;
+    }
+
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(CHAT_STORAGE_PREFIX) && key !== currentKey) {
+            keysToRemove.push(key);
+        }
+    }
+
+    keysToRemove.forEach((key) => localStorage.removeItem(key));
+    return keysToRemove.length;
+};
 
 const sanitizeContextUtilization = (contextUtilization: any) => {
     if (!contextUtilization || typeof contextUtilization !== 'object') {
@@ -98,12 +205,7 @@ const sanitizeMessagesForStorage = (messages: Message[]): Message[] => {
     return messages
         .slice(-MAX_STORED_MESSAGES)
         .map((message) => {
-            const sanitizedSources = message.sources?.map((source) => ({
-                ...source,
-                text: typeof source.text === 'string'
-                    ? source.text.slice(0, MAX_SAVED_SOURCE_TEXT)
-                    : source.text,
-            }));
+            const sanitizedSources = message.sources?.map((source) => sanitizeSourceForStorage(source));
 
             const sanitizedMetrics = message.metrics ? {
                 confidence: message.metrics.confidence,
@@ -172,7 +274,7 @@ export default function ChatInterface({
 
             try {
                 // Try to load messages from localStorage
-                const storedMessages = localStorage.getItem(`chatMessages_${sessionStatus.sessionId}`);
+                const storedMessages = localStorage.getItem(getChatStorageKey(sessionStatus.sessionId));
                 if (storedMessages) {
                     const parsedMessages = JSON.parse(storedMessages);
                     // Convert timestamp strings back to Date objects
@@ -218,7 +320,7 @@ export default function ChatInterface({
             return;
         }
 
-        const storageKey = `chatMessages_${sessionStatus.sessionId}`;
+        const storageKey = getChatStorageKey(sessionStatus.sessionId);
         const sanitizedMessages = sanitizeMessagesForStorage(messages);
 
         const minimalMessages = sanitizedMessages.map((message) => ({
@@ -238,6 +340,7 @@ export default function ChatInterface({
         ].filter((candidate) => candidate.length > 0);
 
         let saved = false;
+        let cleanupAttempted = false;
 
         const serialize = (candidate: Message[]) =>
             JSON.stringify(candidate, (_key, value) => {
@@ -265,12 +368,32 @@ export default function ChatInterface({
                     break;
                 }
 
+                if (!cleanupAttempted) {
+                    cleanupAttempted = true;
+                    const removedCount = cleanupChatStorage(storageKey);
+                    if (removedCount > 0) {
+                        try {
+                            localStorage.setItem(storageKey, serialize(candidate));
+                            saved = true;
+                            break;
+                        } catch (retryError) {
+                            const retryQuotaExceeded =
+                                retryError instanceof DOMException &&
+                                (retryError.name === 'QuotaExceededError' || retryError.name === 'NS_ERROR_DOM_QUOTA_REACHED');
+                            if (!retryQuotaExceeded) {
+                                console.error('Error saving messages to localStorage:', retryError);
+                                break;
+                            }
+                        }
+                    }
+                }
+
                 console.warn('LocalStorage quota exceeded while saving chat history. Retrying with reduced payload.', error);
             }
         }
 
         if (!saved) {
-            console.error('Unable to persist chat history; clearing stored conversation to stay within quota.');
+            console.warn('Unable to persist chat history; clearing stored conversation to stay within quota.');
             localStorage.removeItem(storageKey);
         }
     }, [messages, sessionStatus.sessionId]);
@@ -351,7 +474,7 @@ export default function ChatInterface({
 
         // Clear messages from localStorage
         if (sessionStatus.sessionId && typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
-            localStorage.removeItem(`chatMessages_${sessionStatus.sessionId}`);
+            localStorage.removeItem(getChatStorageKey(sessionStatus.sessionId));
         }
 
         // Session management is handled by parent component
@@ -450,6 +573,7 @@ export default function ChatInterface({
                                             }`}
                                     >
                                         {showDebugPanel &&
+                                            !message.metrics?.abstained &&
                                             message.metrics?.context_utilization &&
                                             typeof message.metrics.context_utilization === 'object' &&
                                             'supported_terms_per_sentence' in message.metrics.context_utilization ? (

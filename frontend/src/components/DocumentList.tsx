@@ -319,21 +319,21 @@ export default function DocumentList() {
                 </div>
             ) : (
                 <div className="space-y-3">
-                    {files.map((file, index) => (
+                    {files.map((file) => (
                         <div key={file.name} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center space-x-3">
-                                    <span className="text-2xl">{getFileIcon(file.extension)}</span>
-                                    <div>
-                                        <h3 className="text-lg font-medium text-gray-900">{file.name}</h3>
-                                        <div className="flex items-center space-x-4 text-sm text-gray-500">
+                            <div className="flex flex-wrap md:flex-nowrap items-start justify-between gap-4">
+                                <div className="flex items-start space-x-3 min-w-0">
+                                    <span className="text-2xl shrink-0">{getFileIcon(file.extension)}</span>
+                                    <div className="flex-1 min-w-0">
+                                        <h3 className="text-lg font-medium text-gray-900 break-all md:break-words">{file.name}</h3>
+                                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500 mt-2">
                                             <span>{formatFileSize(file.size_bytes)}</span>
                                             <span>{file.extension.toUpperCase()}</span>
-                                            <span>Modified: {formatDate(file.modified)}</span>
+                                            <span className="break-words">Modified: {formatDate(file.modified)}</span>
                                         </div>
                                     </div>
                                 </div>
-                                <div className="flex space-x-2">
+                                <div className="flex flex-wrap gap-2 justify-end">
                                     <button
                                         onClick={() => fetchFileContent(file.name)}
                                         className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
@@ -381,8 +381,8 @@ export default function DocumentList() {
                     <div className="bg-white rounded-lg max-w-4xl w-full mx-4 max-h-[80vh] flex flex-col">
                         <div className="flex justify-between items-center p-6 border-b border-gray-200">
                             <div>
-                                <h3 className="text-lg font-semibold text-gray-900">{selectedFile.filename}</h3>
-                                <div className="flex items-center space-x-4 text-sm text-gray-500 mt-1">
+                                <h3 className="text-lg font-semibold text-gray-900 break-all">{selectedFile.filename}</h3>
+                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500 mt-2">
                                     <span>{formatFileSize(selectedFile.size_bytes)}</span>
                                     <span>{selectedFile.extension.toUpperCase()}</span>
                                     <span>{selectedFile.line_count} lines</span>
@@ -415,7 +415,7 @@ export default function DocumentList() {
                         <div className="flex justify-between items-center p-6 border-b border-gray-200">
                             <div>
                                 <h3 className="text-xl font-semibold text-gray-900">Enhanced Document Metadata</h3>
-                                <p className="text-sm text-gray-500 mt-1">{documentMetadata.document.file_name}</p>
+                                <p className="text-sm text-gray-500 mt-1 break-all">{documentMetadata.document.file_name}</p>
                             </div>
                             <button
                                 onClick={() => setShowMetadata(false)}
@@ -456,7 +456,7 @@ export default function DocumentList() {
                                             </div>
                                             <div>
                                                 <label className="text-sm font-medium text-gray-500">URL</label>
-                                                <p className="text-sm text-gray-900">{documentMetadata.document.url || 'None'}</p>
+                                                <p className="text-sm text-gray-900 break-all">{documentMetadata.document.url || 'None'}</p>
                                             </div>
                                         </div>
 
@@ -583,7 +583,7 @@ export default function DocumentList() {
                                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                                                     <div>
                                                         <label className="text-gray-500">Chunk ID</label>
-                                                        <p className="text-gray-900 font-mono text-xs">{chunk.chunk_id}</p>
+                                                        <p className="text-gray-900 font-mono text-xs break-all">{chunk.chunk_id}</p>
                                                     </div>
                                                     <div>
                                                         <label className="text-gray-500">Tokens</label>
@@ -591,7 +591,7 @@ export default function DocumentList() {
                                                     </div>
                                                     <div>
                                                         <label className="text-gray-500">First Line</label>
-                                                        <p className="text-gray-900">{chunk.first_line || 'None'}</p>
+                                                        <p className="text-gray-900 break-words">{chunk.first_line || 'None'}</p>
                                                     </div>
                                                 </div>
                                             </div>

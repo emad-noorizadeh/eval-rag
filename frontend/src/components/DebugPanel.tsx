@@ -148,7 +148,7 @@ export default function DebugPanel({ metrics, isLoading, generatedBy }: DebugPan
 
     if (isLoading) {
         return (
-            <div className="bg-gray-50 rounded-lg p-4 h-full">
+            <div className="bg-gray-50 rounded-lg p-4 h-full break-words">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">System Debug</h3>
                 <div className="flex items-center justify-center h-32">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
@@ -159,7 +159,7 @@ export default function DebugPanel({ metrics, isLoading, generatedBy }: DebugPan
 
     if (!metrics) {
         return (
-            <div className="bg-gray-50 rounded-lg p-4 h-full">
+            <div className="bg-gray-50 rounded-lg p-4 h-full break-words">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">System Debug</h3>
                 <div className="text-center text-gray-500 py-8">
                     <div className="text-4xl mb-4">🔍</div>
@@ -172,7 +172,7 @@ export default function DebugPanel({ metrics, isLoading, generatedBy }: DebugPan
     // If LangGraph metrics but no meaningful data, show a message
     if (isLangGraphMetrics && !metrics.ingest_metrics && !metrics.retrieve_metrics && !metrics.route_metrics) {
         return (
-            <div className="bg-gray-50 rounded-lg p-4 h-full">
+            <div className="bg-gray-50 rounded-lg p-4 h-full break-words">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">System Debug</h3>
                 <div className="text-center text-gray-500 py-8">
                     <div className="text-4xl mb-4">🤖</div>
@@ -183,7 +183,7 @@ export default function DebugPanel({ metrics, isLoading, generatedBy }: DebugPan
     }
 
     return (
-        <div className="bg-gray-50 rounded-lg p-4 h-full overflow-y-auto">
+        <div className="bg-gray-50 rounded-lg p-4 h-full overflow-y-auto break-words">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">System Debug</h3>
 
             {isLangGraphMetrics ? (
@@ -859,7 +859,7 @@ export default function DebugPanel({ metrics, isLoading, generatedBy }: DebugPan
                                                 )}
                                             </div>
                                             {Object.keys(chunk.metadata).length > 0 && (
-                                                <div className="text-xs text-gray-500">
+                                                <div className="text-xs text-gray-500 break-words">
                                                     <strong>Metadata:</strong> {JSON.stringify(chunk.metadata)}
                                                 </div>
                                             )}
