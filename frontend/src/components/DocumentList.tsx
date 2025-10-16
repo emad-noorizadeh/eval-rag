@@ -6,6 +6,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { getApiUrl } from '@/config/api';
 
 interface DataFile {
     name: string;
@@ -86,7 +87,7 @@ export default function DocumentList() {
 
     const fetchCollectionInfo = async () => {
         try {
-            const response = await fetch('http://localhost:9000/collection/info');
+            const response = await fetch(getApiUrl('COLLECTION_INFO'));
             if (response.ok) {
                 const data = await response.json();
                 setCollectionInfo(data);
@@ -101,7 +102,7 @@ export default function DocumentList() {
         setError('');
 
         try {
-            const response = await fetch('http://localhost:9000/data-files', {
+            const response = await fetch(getApiUrl('DATA_FILES'), {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
@@ -138,7 +139,7 @@ export default function DocumentList() {
 
     const fetchFileContent = async (filename: string) => {
         try {
-            const response = await fetch(`http://localhost:9000/data-files/${encodeURIComponent(filename)}`);
+            const response = await fetch(getApiUrl('DATA_FILE_CONTENT', filename));
             if (response.ok) {
                 const data: FileContent = await response.json();
                 setSelectedFile(data);
@@ -157,7 +158,7 @@ export default function DocumentList() {
         setError('');
 
         try {
-            const response = await fetch(`http://localhost:9000/documents/${encodeURIComponent(filename)}/metadata`);
+            const response = await fetch(getApiUrl('DOCUMENT_METADATA', filename));
             if (response.ok) {
                 const data: DocumentMetadataResponse = await response.json();
                 setDocumentMetadata(data);
@@ -183,7 +184,7 @@ export default function DocumentList() {
         setError('');
 
         try {
-            const response = await fetch(`http://localhost:9000/documents/file/${encodeURIComponent(filename)}`, {
+            const response = await fetch(getApiUrl('DOCUMENT_FILE', filename), {
                 method: 'DELETE',
             });
 

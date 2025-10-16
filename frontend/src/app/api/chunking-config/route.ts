@@ -4,8 +4,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { API_BASE_URL } from '@/config/api';
 
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:9000';
+const BACKEND_URL = API_BASE_URL;
 
 export async function GET() {
     try {

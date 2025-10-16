@@ -8,6 +8,7 @@
 import { useState, useRef, useEffect } from 'react';
 import DebugPanel from './DebugPanel';
 import HighlightedText from './HighlightedText';
+import { getApiUrl } from '@/config/api';
 // useSession is now passed as props from parent component
 
 // Message interface is now defined in parent component
@@ -286,7 +287,7 @@ export default function ChatInterface({
         setError('');
 
         try {
-            const response = await fetch('http://localhost:9000/chat', {
+            const response = await fetch(getApiUrl('CHAT'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

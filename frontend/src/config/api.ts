@@ -15,6 +15,7 @@ export const API_ENDPOINTS = {
   // Document endpoints
   DOCUMENTS: `${API_BASE_URL}/documents`,
   DOCUMENTS_METADATA: `${API_BASE_URL}/documents/metadata`,
+  DOCUMENT_UPLOAD_FILE: `${API_BASE_URL}/documents/file`,
   DOCUMENT_CONTENT: (filename: string) => `${API_BASE_URL}/documents/${encodeURIComponent(filename)}/content`,
   DOCUMENT_METADATA: (filename: string) => `${API_BASE_URL}/documents/${encodeURIComponent(filename)}/metadata`,
   DOCUMENT_FILE: (filename: string) => `${API_BASE_URL}/documents/file/${encodeURIComponent(filename)}`,

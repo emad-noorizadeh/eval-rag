@@ -6,6 +6,7 @@
 'use client';
 
 import { useState } from 'react';
+import { getApiUrl } from '@/config/api';
 
 interface DocumentUploadProps { }
 
@@ -43,7 +44,7 @@ export default function DocumentUpload({ }: DocumentUploadProps) {
 
             if (uploadType === 'text') {
                 // Upload text document
-                response = await fetch('http://localhost:9000/documents', {
+                response = await fetch(getApiUrl('DOCUMENTS'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -59,7 +60,7 @@ export default function DocumentUpload({ }: DocumentUploadProps) {
                 formData.append('file', selectedFile!);
                 formData.append('filename', customFilename.trim());
 
-                response = await fetch('http://localhost:9000/documents/file', {
+                response = await fetch(getApiUrl('DOCUMENT_UPLOAD_FILE'), {
                     method: 'POST',
                     body: formData,
                 });

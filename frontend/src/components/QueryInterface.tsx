@@ -6,6 +6,7 @@
 'use client';
 
 import { useState } from 'react';
+import { getApiUrl } from '@/config/api';
 
 interface QueryResult {
     id: string;
@@ -38,7 +39,7 @@ export default function QueryInterface() {
         setExpandedResults(new Set());
 
         try {
-            const response = await fetch('http://localhost:9000/query', {
+            const response = await fetch(getApiUrl('QUERY'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
