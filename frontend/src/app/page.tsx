@@ -1,5 +1,5 @@
 /**
- * RAG DevOps & Testing Platform - Main Page
+ * RAG Development & Testing Platform - Main Page
  * Author: Emad Noorizadeh
  */
 
@@ -74,7 +74,7 @@ export default function Home() {
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 py-8">
         <header className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">RAG DevOps &amp; Testing Platform</h1>
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">RAG Development &amp; Testing Platform</h1>
           <p className="text-gray-600">Develop, evaluate, and operate Retrieval-Augmented Generation workflows</p>
           {sessionStatus.isValid && sessionStatus.sessionId && (
             <div className="mt-4 inline-flex items-center px-3 py-1 rounded-full text-sm bg-green-100 text-green-800">

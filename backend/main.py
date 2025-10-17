@@ -59,7 +59,11 @@ create_network_monitor()
 block_external_requests()
 create_url_monitor()
 
+import logging
+import time
+
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Union, Dict, Any
@@ -100,6 +104,8 @@ chat_config = ChatConfig(
 )
 
 chat_agent = ChatAgent(model_manager, index_builder, session_manager, chat_config)
+
+chat_logger = logging.getLogger(__name__ + ".chat_route")
 
 # Note: ChatAgent is now created per-session in session_manager
 print("✓ RAG system initialized successfully")
@@ -251,7 +257,7 @@ async def root():
 
 # Session Management Endpoints
 @app.post("/sessions", response_model=SessionResponse)
-async def create_session(request: SessionCreateRequest = None):
+def create_session(request: SessionCreateRequest = None):
     """Create a new chat session"""
     try:
         session_id = session_manager.create_session()
@@ -269,7 +275,7 @@ async def create_session(request: SessionCreateRequest = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/sessions/{session_id}")
-async def get_session_info(session_id: str):
+def get_session_info(session_id: str):
     """Get session information"""
     try:
         session_info = session_manager.get_session_info(session_id)
@@ -282,7 +288,7 @@ async def get_session_info(session_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/sessions/{session_id}/extend")
-async def extend_session(session_id: str):
+def extend_session(session_id: str):
     """Extend session by updating last activity"""
     try:
         success = session_manager.extend_session(session_id)
@@ -301,7 +307,7 @@ async def extend_session(session_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/sessions/{session_id}")
-async def end_session(session_id: str):
+def end_session(session_id: str):
     """End a session"""
     try:
         success = session_manager.end_session(session_id)
@@ -314,7 +320,7 @@ async def end_session(session_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/sessions")
-async def get_active_sessions():
+def get_active_sessions():
     """Get all active sessions (admin endpoint)"""
     try:
         sessions = session_manager.get_active_sessions()
@@ -326,7 +332,7 @@ async def get_active_sessions():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/build-index")
-async def build_index(folder_path: str = None):
+def build_index(folder_path: str = None):
     """Build index from text files in a folder (uses config default if no path provided)"""
     try:
         result = index_builder.build_index_from_folder(folder_path)
@@ -340,7 +346,7 @@ async def build_index(folder_path: str = None):
 
 
 @app.post("/documents", response_model=dict)
-async def add_document(document: Document):
+def add_document(document: Document):
     """Add a document to the vector database"""
     try:
         # Use index builder to add document
@@ -351,7 +357,7 @@ async def add_document(document: Document):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/documents/file", response_model=dict)
-async def add_document_from_file(file: UploadFile = File(...), filename: str = Form(None)):
+def add_document_from_file(file: UploadFile = File(...), filename: str = Form(None)):
     """Add a document from uploaded file to the vector database"""
     try:
         # Check file size
@@ -359,8 +365,9 @@ async def add_document_from_file(file: UploadFile = File(...), filename: str = F
         if file.size and file.size > max_size:
             raise HTTPException(status_code=400, detail=f"File too large. Maximum size: {get_config('data', 'max_file_size_mb')}MB")
         
-        # Read file content
-        content = await file.read()
+        # Read file content (synchronous)
+        file.file.seek(0)
+        content = file.file.read()
         
         # Parse content based on file type
         file_extension = os.path.splitext(file.filename)[1].lower()
@@ -444,7 +451,7 @@ async def add_document_from_file(file: UploadFile = File(...), filename: str = F
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/query", response_model=QueryResponse)
-async def query_documents(query: Query):
+def query_documents(query: Query):
     """Query the vector database for similar documents using semantic retrieval"""
     try:
         # Use RAG system which properly uses RetrievalService with debugging
@@ -469,7 +476,7 @@ async def query_documents(query: Query):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/documents", response_model=dict)
-async def get_all_documents():
+def get_all_documents():
     """Get all documents from the database"""
     try:
         info = index_builder.get_collection_info()
@@ -481,7 +488,7 @@ async def get_all_documents():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/data-files")
-async def get_data_files():
+def get_data_files():
     """Get list of files in the data folder"""
     try:
         data_folder = get_config("data", "folder_path")
@@ -528,7 +535,7 @@ async def get_data_files():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/data-files/{filename}")
-async def get_file_content(filename: str):
+def get_file_content(filename: str):
     """Get content of a specific file from the data folder"""
     try:
         data_folder = get_config("data", "folder_path")
@@ -567,7 +574,7 @@ async def get_file_content(filename: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/documents/{document_id}")
-async def delete_document(document_id: str):
+def delete_document(document_id: str):
     """Delete a specific document from both index and data folder"""
     try:
         # First, get document metadata to find associated files
@@ -616,7 +623,7 @@ async def delete_document(document_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/documents/file/{filename}")
-async def delete_document_by_filename(filename: str):
+def delete_document_by_filename(filename: str):
     """Delete a document by filename from both index and data folder"""
     try:
         # Find document by filename in the index
@@ -660,7 +667,7 @@ async def delete_document_by_filename(filename: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/documents")
-async def clear_all_documents():
+def clear_all_documents():
     """Clear all documents from both database and data folder"""
     try:
         # Get all files in data folder before clearing
@@ -690,7 +697,7 @@ async def clear_all_documents():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/chunking-config")
-async def get_chunking_config():
+def get_chunking_config():
     """Get current chunking configuration"""
     try:
         config = index_builder.get_chunking_config()
@@ -699,7 +706,7 @@ async def get_chunking_config():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/chunking-config")
-async def update_chunking_config(config: ChunkingConfig):
+def update_chunking_config(config: ChunkingConfig):
     """Update chunking configuration"""
     try:
         index_builder.update_chunking_params(
@@ -714,7 +721,7 @@ async def update_chunking_config(config: ChunkingConfig):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/build-index")
-async def build_index():
+def build_index():
     """Build basic index for semantic retrieval"""
     try:
         result = index_builder.build_index_from_folder()
@@ -728,7 +735,7 @@ async def build_index():
 # Enhanced metadata endpoints removed - using basic index builder
 
 @app.get("/documents/{filename}/metadata")
-async def get_document_metadata(filename: str):
+def get_document_metadata(filename: str):
     """Get enhanced metadata for a specific document by filename"""
     try:
         # Get metadata from storage
@@ -802,7 +809,7 @@ async def get_document_metadata(filename: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/documents/metadata")
-async def get_all_documents_metadata():
+def get_all_documents_metadata():
     """Get metadata for all documents"""
     try:
         all_metadata = index_builder.metadata_storage.get_all_documents()
@@ -811,7 +818,7 @@ async def get_all_documents_metadata():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/collection/info")
-async def get_collection_info():
+def get_collection_info():
     """Get collection/index information"""
     try:
         collection_info = index_builder.get_collection_info()
@@ -826,7 +833,7 @@ async def get_collection_info():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/documents/{filename}/content")
-async def get_document_content(filename: str):
+def get_document_content(filename: str):
     """Get the raw content of a specific document"""
     try:
         data_folder = get_config("data", "folder_path")
@@ -846,36 +853,53 @@ async def get_document_content(filename: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+def _process_chat_request(request: ChatRequest) -> Dict[str, Any]:
+    """Synchronous worker to handle chat requests."""
+    start = time.perf_counter()
+    session_id = request.session_id
+    chat_logger.info(
+        "chat_request start session=%s message='%s'",
+        session_id or "(pending)",
+        request.message[:160] if request.message else "",
+    )
+    # Get conversation history from session
+    session_data = session_manager.get_session(request.session_id)
+    if session_data is None:
+        # Create new session if it doesn't exist
+        request.session_id = session_manager.create_session()
+        session_data = session_manager.get_session(request.session_id)
+    
+    # Convert conversation history to the format expected by UnifiedChatAgent
+    conversation_history = []
+    if request.conversation_history:
+        for msg in request.conversation_history:
+            conversation_history.append({
+                "role": "user" if msg.isUser else "assistant",
+                "content": msg.text,
+                "timestamp": msg.timestamp
+            })
+
+    response = chat_agent.chat(
+        message=request.message,
+        session_id=request.session_id,
+        conversation_history=conversation_history
+    )
+    elapsed = time.perf_counter() - start
+    chat_logger.info(
+        "chat_request end session=%s elapsed=%.3fs decision=%s answer_len=%d",
+        response.get("session_id"),
+        elapsed,
+        (response.get("metrics") or {}).get("answer_type"),
+        len((response.get("answer") or "")),
+    )
+    return response
+
+
 @app.post("/chat")
 async def chat(request: ChatRequest):
     """Unified chat endpoint with configurable retrieval and routing"""
     try:
-        # Get conversation history from session
-        session_data = session_manager.get_session(request.session_id)
-        if session_data is None:
-            # Create new session if it doesn't exist
-            request.session_id = session_manager.create_session()
-            session_data = session_manager.get_session(request.session_id)
-        
-        # Convert conversation history to the format expected by UnifiedChatAgent
-        conversation_history = []
-        if request.conversation_history:
-            for msg in request.conversation_history:
-                conversation_history.append({
-                    "role": "user" if msg.isUser else "assistant",
-                    "content": msg.text,
-                    "timestamp": msg.timestamp
-                })
-        
-        # Process the chat using chat agent
-        response = chat_agent.chat(
-            message=request.message,
-            session_id=request.session_id,
-            conversation_history=conversation_history
-        )
-        
-        return response
-        
+        return await run_in_threadpool(_process_chat_request, request)
     except Exception as e:
         print(f"Error in chat-unified: {e}")
         import traceback
@@ -883,7 +907,7 @@ async def chat(request: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/chat-config")
-async def get_chat_config():
+def get_chat_config():
     """Get current chat agent configuration"""
     try:
         config_data = chat_agent.get_config()
@@ -908,7 +932,7 @@ async def get_chat_config():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/chat-config")
-async def update_chat_config(config_update: Dict[str, Any]):
+def update_chat_config(config_update: Dict[str, Any]):
     """Update chat agent configuration"""
     try:
         # Create new config with updated values
@@ -943,7 +967,7 @@ async def update_chat_config(config_update: Dict[str, Any]):
 # =========================
 
 @app.get("/index/status")
-async def get_index_status():
+def get_index_status():
     """Get current index status"""
     try:
         # Get basic index info from IndexBuilder
@@ -960,7 +984,7 @@ async def get_index_status():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/index/compatibility/{retrieval_method}")
-async def check_index_compatibility(retrieval_method: str):
+def check_index_compatibility(retrieval_method: str):
     """Check if current index supports the specified retrieval method"""
     try:
         # Only semantic retrieval is supported
@@ -984,7 +1008,7 @@ async def check_index_compatibility(retrieval_method: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/index/setup")
-async def setup_index(request: Dict[str, Any]):
+def setup_index(request: Dict[str, Any]):
     """Setup index for semantic retrieval"""
     try:
         retrieval_method = request.get("retrieval_method", "semantic")
@@ -1011,7 +1035,7 @@ async def setup_index(request: Dict[str, Any]):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/index/compatibility-matrix")
-async def get_compatibility_matrix():
+def get_compatibility_matrix():
     """Get compatibility matrix for all retrieval methods"""
     try:
         # Only semantic retrieval is supported
@@ -1031,7 +1055,7 @@ async def get_compatibility_matrix():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/index/add-documents")
-async def add_documents_to_index(request: Dict[str, Any]):
+def add_documents_to_index(request: Dict[str, Any]):
     """Add documents to existing index"""
     try:
         documents = request.get("documents", [])
@@ -1051,7 +1075,7 @@ async def add_documents_to_index(request: Dict[str, Any]):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/index")
-async def delete_index(request: Dict[str, Any] = None):
+def delete_index(request: Dict[str, Any] = None):
     """Delete the current index"""
     try:
         from scripts.delete_index import delete_index_api

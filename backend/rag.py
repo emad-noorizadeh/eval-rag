@@ -18,6 +18,7 @@ Author: Emad Noorizadeh
 """
 
 import json
+import logging
 from typing import List, Dict, Any, Optional, Tuple
 from collections import defaultdict
 from .model_manager import ModelManager
@@ -42,6 +43,7 @@ class RAG:
         # Define the prompt template for structured response + metrics
         self.prompt_template = get_rag_main_prompt()
         self.last_retrieval_error: Optional[str] = None
+        self.logger = logging.getLogger(__name__ + ".rag")
 
     
     
@@ -56,6 +58,7 @@ class RAG:
         Returns:
             List of retrieved documents with metadata
         """
+        self.logger.info("retrieve_documents: query='%s' top_k=%d", query[:160], n_results)
         self.last_retrieval_error = None
         try:
             retrieval_config = RetrievalConfig(
@@ -75,6 +78,16 @@ class RAG:
                     "score": chunk["score"],
                     "metadata": chunk["metadata"],
                 })
+            if retrieval_result.chunks:
+                scores = [chunk["score"] for chunk in retrieval_result.chunks]
+                self.logger.info(
+                    "retrieve_documents: retrieved=%d avg_score=%.3f max_score=%.3f",
+                    len(retrieval_result.chunks),
+                    sum(scores) / len(scores),
+                    max(scores),
+                )
+            else:
+                self.logger.info("retrieve_documents: retrieved=0")
             return documents
         except Exception as exc:
             self.last_retrieval_error = str(exc)
@@ -169,6 +182,12 @@ class RAG:
                 similarity_threshold = 0.45
 
             while True:
+                self.logger.info(
+                    "generate_response: attempt=%d retrieved=%d avg_similarity=%.3f",
+                    attempt + 1,
+                    len(retrieved),
+                    avg_similarity,
+                )
                 response_text = self.model_manager.generate_text([{"role": "user", "content": current_prompt}])
                 data = self._parse_json_response(response_text) or {}
                 is_valid, normalized, error_msg = self._validate_response_schema(data)
@@ -187,6 +206,10 @@ class RAG:
                         attempt += 1
                         if attempt > max_retry:
                             print("LLM abstained despite sufficient context; falling back")
+                            self.logger.warning(
+                                "generate_response: abstained despite sufficient context (attempt=%d)",
+                                attempt,
+                            )
                             break
                         repair_reason = (
                             "Model abstained despite sufficient grounding context. "
@@ -195,6 +218,12 @@ class RAG:
                         current_prompt = self._build_repair_prompt(base_prompt, response_text, repair_reason)
                         continue
 
+                    self.logger.info(
+                        "generate_response: success attempt=%d answer_len=%d abstained=%s",
+                        attempt + 1,
+                        len(data.get("answer", "") or ""),
+                        data.get("abstained"),
+                    )
                     return {
                         "answer": data.get("answer", ""),
                         "sources": retrieved,
@@ -202,9 +231,19 @@ class RAG:
                     }
 
                 last_error = error_msg or "Schema validation failed"
+                self.logger.warning(
+                    "generate_response: schema_invalid attempt=%d error='%s'",
+                    attempt + 1,
+                    last_error,
+                )
                 attempt += 1
                 if attempt > max_retry:
                     print(f"Schema validation failed after {attempt} attempts: {last_error}")
+                    self.logger.error(
+                        "generate_response: schema_failed attempts=%d last_error='%s'",
+                        attempt,
+                        last_error,
+                    )
                     break
                 current_prompt = self._build_repair_prompt(base_prompt, response_text, last_error)
 
@@ -212,6 +251,7 @@ class RAG:
 
         except Exception as e:
             print(f"Error generating structured response: {e}")
+            self.logger.exception("generate_response: exception")
             return self._create_fallback_response(question, retrieved)
     
     def retrieve_documents_union_if_needed(self, original_query: str, hint_query: str, n_results: int, use_union: bool):

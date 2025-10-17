@@ -23,6 +23,7 @@ from dotenv import load_dotenv, find_dotenv
 from llama_index.embeddings.openai import OpenAIEmbedding
 import openai
 import os
+import logging
 from .config import get_config
 
 # Ensure environment variables (like OPENAI_API_KEY) are loaded once per process
@@ -80,6 +81,14 @@ class ModelManager:
         if self.api_key:
             # Keep env in sync so downstream libs relying on os.getenv still work
             os.environ["OPENAI_API_KEY"] = self.api_key
+        try:
+            timeout_val = get_config("models", "request_timeout")
+            self.request_timeout = float(timeout_val) if timeout_val is not None else 30.0
+        except (TypeError, ValueError):
+            self.request_timeout = 30.0
+        if self.request_timeout <= 0:
+            self.request_timeout = 30.0
+        self.logger = logging.getLogger(__name__ + ".model_manager")
         self._initialize_models()
     
     def _initialize_models(self, openai_api_key: str = None):
@@ -154,8 +163,10 @@ class ModelManager:
                 model=model,
                 messages=messages,
                 temperature=temperature,
-                max_tokens=get_config("models", "max_tokens")
+                max_tokens=get_config("models", "max_tokens"),
+                timeout=self.request_timeout
             )
             return response.choices[0].message.content
         except Exception as e:
+            self.logger.exception("generate_text: request_failed")
             raise ValueError(f"Error generating text: {e}")

@@ -16,7 +16,9 @@
 
 from __future__ import annotations
 
+import logging
 import operator
+import time
 from typing import Annotated, Dict, Any, List, Literal, TypedDict
 
 from langgraph.graph import StateGraph, END, START
@@ -69,6 +71,9 @@ class SimpleRouterApp:
         self.rag = chat_agent.rag
         self.config = chat_agent.config
         self.graph = self._build_graph()
+        self.logger = logging.getLogger(__name__ + ".router")
+        if not self.logger.handlers:
+            self.logger.setLevel(logging.INFO)
 
     # Graph construction -------------------------------------------------
 
@@ -101,35 +106,52 @@ class SimpleRouterApp:
 
     def ingest(self, state: AgentState) -> AgentState:
         """Append user message and refresh session state fields."""
-        messages = list(state.get("messages", []))
         user_message = state.get("user_message", "")
+        session_id = state.get("session_id", "unknown")
+        self.logger.info(
+            "node=ingest session=%s message='%s'",
+            session_id,
+            user_message[:160],
+        )
+
+        updates: AgentState = {}
         if user_message:
-            messages.append({"role": "user", "content": user_message})
-        state["messages"] = messages
-        state.setdefault("last_question", "")
-        state.setdefault("awaiting_clarification", False)
-        state.setdefault("clarify_count", 0)
-        state.setdefault("last_clarification", "")
-        state.setdefault("topic_hint", "")
-        return state
+            updates["messages"] = [{"role": "user", "content": user_message}]
+
+        # Ensure persistent defaults exist for downstream nodes.
+        updates["last_question"] = state.get("last_question", "")
+        updates["awaiting_clarification"] = state.get("awaiting_clarification", False)
+        updates["clarify_count"] = state.get("clarify_count", 0)
+        updates["last_clarification"] = state.get("last_clarification", "")
+        updates["topic_hint"] = state.get("topic_hint", "")
+
+        return updates
 
     def handle_frustration(self, state: AgentState) -> AgentState:
-        last_question = state.get("last_question", "")
-        clarify_count = state.get("clarify_count", 0)
         user_message = state.get("user_message", "")
+        session_id = state.get("session_id", "unknown")
+        self.logger.debug("node=frustration session=%s", session_id)
         frustration_triggered = (
             user_message
             and not user_message.endswith("?")
             and any(token in user_message.lower() for token in self.FRUSTRATION_TOKENS)
         )
 
+        updates: AgentState = {
+            "frustration_triggered": bool(frustration_triggered),
+        }
+
         if frustration_triggered:
             clarification = "I’m happy to help—could you tell me which part you’d like me to explain further?"
-            state.update(
+            self.logger.info(
+                "node=frustration session=%s triggered tokens",
+                state.get("session_id", "unknown"),
+            )
+            clarify_count = state.get("clarify_count", 0) + 1
+            updates.update(
                 {
-                    "frustration_triggered": True,
                     "awaiting_clarification": True,
-                    "clarify_count": clarify_count + 1,
+                    "clarify_count": clarify_count,
                     "last_clarification": clarification,
                     "decision": "clarification",
                     "answer_text": clarification,
@@ -154,9 +176,12 @@ class SimpleRouterApp:
                 }
             )
         else:
-            state["frustration_triggered"] = False
+            self.logger.debug(
+                "node=frustration session=%s not_triggered",
+                state.get("session_id", "unknown"),
+            )
 
-        return state
+        return updates
 
     def build_effective_question(self, state: AgentState) -> AgentState:
         user_message = state.get("user_message", "").strip()
@@ -175,28 +200,45 @@ class SimpleRouterApp:
             effective_question = last_question
             appended_history = True
 
-        state.update({
+        self.logger.info(
+            "node=build_query session=%s effective='%s' appended_history=%s",
+            state.get("session_id", "unknown"),
+            effective_question[:160],
+            appended_history,
+        )
+        return {
             "effective_question": effective_question,
             "appended_history": appended_history,
-        })
-        return state
+        }
 
     def retrieve(self, state: AgentState) -> AgentState:
         effective_question = state.get("effective_question", "")
+        self.logger.info(
+            "node=retrieve session=%s question='%s'",
+            state.get("session_id", "unknown"),
+            effective_question[:160],
+        )
+        start = time.perf_counter()
         retrieved = self.rag.retrieve_documents(
             effective_question,
             self.config.retrieval_top_k,
         )
         scores = [chunk.get("score", 0.0) for chunk in retrieved]
         avg_similarity = sum(scores) / len(scores) if scores else 0.0
-        state.update(
-            {
-                "retrieved_chunks": retrieved,
-                "retrieval_scores": scores,
-                "avg_similarity": avg_similarity,
-            }
+        elapsed = time.perf_counter() - start
+        self.logger.info(
+            "node=retrieve session=%s elapsed=%.3fs retrieved=%d avg_similarity=%.3f max_score=%.3f",
+            state.get("session_id", "unknown"),
+            elapsed,
+            len(retrieved),
+            avg_similarity,
+            max(scores) if scores else 0.0,
         )
-        return state
+        return {
+            "retrieved_chunks": retrieved,
+            "retrieval_scores": scores,
+            "avg_similarity": avg_similarity,
+        }
 
     def answer_llm(self, state: AgentState) -> AgentState:
         effective_question = state.get("effective_question", "")
@@ -205,78 +247,155 @@ class SimpleRouterApp:
         topic_hint = state.get("topic_hint", "")
         conversation_snippet = self.chat_agent._build_conversation_snippet(messages)
 
+        self.logger.info(
+            "node=answer_llm session=%s calling_generate_response chunks=%d",
+            state.get("session_id", "unknown"),
+            len(retrieved),
+        )
+        start = time.perf_counter()
         rag_response = self.rag.generate_response(
             effective_question,
             retrieved,
             conversation_snippet=conversation_snippet,
             topic_hint=topic_hint,
         )
-        state["rag_response"] = rag_response
-        return state
+        elapsed = time.perf_counter() - start
+        self.logger.info(
+            "node=answer_llm session=%s elapsed=%.3fs llm_response_received answer_len=%d",
+            state.get("session_id", "unknown"),
+            elapsed,
+            len(rag_response.get("answer", "")),
+        )
+        return {"rag_response": rag_response}
 
     def decide(self, state: AgentState) -> AgentState:
-        rag_response = state.get("rag_response", {})
-        metrics = rag_response.get("metrics", {})
-        clarifying_question = (metrics.get("clarifying_question") or "").strip()
-        abstained = bool(metrics.get("abstained", False))
-        interpreted_question = (metrics.get("interpreted_question") or "").strip()
-
-        decision: Literal["answer", "clarification", "abstain"]
-        answer_text = (rag_response.get("answer") or "").strip()
-        awaiting = False
-
-        if abstained and clarifying_question:
-            decision = "clarification"
-            answer_text = clarifying_question
-            awaiting = True
-            state["clarify_count"] = state.get("clarify_count", 0) + 1
-        elif abstained:
-            decision = "abstain"
-            answer_text = "This question cannot be answered with the available information."
+        session_id = state.get("session_id", "unknown")
+        self.logger.debug("node=decide session=%s entering", session_id)
+        start = time.perf_counter()
+        rag_response = state.get("rag_response", {}) or {}
+        metrics_raw = rag_response.get("metrics", {})
+        if not isinstance(metrics_raw, dict):
+            self.logger.warning(
+                "node=decide session=%s metrics_not_dict type=%s",
+                session_id,
+                type(metrics_raw).__name__,
+            )
+            metrics = {}
         else:
-            decision = "answer"
+            metrics = metrics_raw
 
-        state.update(
-            {
+        try:
+            clarifying_question = self._safe_strip(metrics.get("clarifying_question"))
+            abstained = bool(metrics.get("abstained", False))
+            interpreted_question = self._safe_strip(metrics.get("interpreted_question"))
+
+            decision: Literal["answer", "clarification", "abstain"]
+            answer_text = self._safe_strip(rag_response.get("answer"))
+            awaiting = False
+            new_clarify_count = state.get("clarify_count", 0)
+
+            if abstained and clarifying_question:
+                decision = "clarification"
+                answer_text = clarifying_question
+                awaiting = True
+                new_clarify_count = new_clarify_count + 1
+            elif abstained:
+                decision = "abstain"
+                answer_text = "This question cannot be answered with the available information."
+            else:
+                decision = "answer"
+
+            elapsed = time.perf_counter() - start
+            self.logger.info(
+                "node=decide session=%s elapsed=%.3fs decision=%s abstained=%s clarifying=%s",
+                session_id,
+                elapsed,
+                decision,
+                abstained,
+                bool(clarifying_question),
+            )
+
+            updates: AgentState = {
                 "decision": decision,
-                "answer_text": answer_text or clarifying_question or "I'm sorry, I don't have that information.",
+                "answer_text": (
+                    answer_text
+                    or clarifying_question
+                    or "I'm sorry, I don't have that information."
+                ),
                 "clarification_question": clarifying_question,
                 "awaiting_clarification": awaiting,
-                "interpreted_question": interpreted_question or state.get("effective_question", ""),
+                "interpreted_question": interpreted_question
+                or self._safe_strip(state.get("effective_question")),
             }
-        )
-        return state
+            if new_clarify_count != state.get("clarify_count"):
+                updates["clarify_count"] = new_clarify_count
+
+            return updates
+
+        except Exception as exc:
+            self.logger.exception("node=decide session=%s error=%s", session_id, exc)
+            fallback_answer = (
+                "I ran into an internal error while deciding how to respond. "
+                "Please try rephrasing your question."
+            )
+            return {
+                "decision": "abstain",
+                "answer_text": fallback_answer,
+                "clarification_question": "",
+                "awaiting_clarification": False,
+                "interpreted_question": self._safe_strip(state.get("effective_question")),
+            }
 
     def finalize(self, state: AgentState) -> AgentState:
         messages = state.get("messages", [])
         rag_response = state.get("rag_response", {})
         retrieved = state.get("retrieved_chunks", [])
-        metrics = self.chat_agent._create_intelligent_metrics(
-            original_question=state.get("user_message", ""),
-            effective_question=state.get("effective_question", ""),
-            retrieved_chunks=retrieved,
-            rag_response=rag_response,
-            conversation_length=len(messages),
-            avg_score=state.get("avg_similarity", 0.0),
-            threshold=self.config.similarity_threshold,
-            awaiting_clarification=state.get("awaiting_clarification", False),
-            clarify_count=state.get("clarify_count", 0),
-            last_clarification=state.get("clarification_question", ""),
+        self.logger.info(
+            "node=finalize session=%s decision=%s retrieved=%d avg_similarity=%.3f",
+            state.get("session_id", "unknown"),
+            state.get("decision"),
+            len(retrieved),
+            state.get("avg_similarity", 0.0),
         )
+        try:
+            metrics = self.chat_agent._create_intelligent_metrics(
+                original_question=state.get("user_message", ""),
+                effective_question=state.get("effective_question", ""),
+                retrieved_chunks=retrieved,
+                rag_response=rag_response,
+                conversation_length=len(messages),
+                avg_score=state.get("avg_similarity", 0.0),
+                threshold=self.config.similarity_threshold,
+                awaiting_clarification=state.get("awaiting_clarification", False),
+                clarify_count=state.get("clarify_count", 0),
+                last_clarification=state.get("clarification_question", ""),
+            )
+        except Exception as exc:
+            self.logger.exception(
+                "node=finalize session=%s metrics_generation_failed: %s",
+                state.get("session_id", "unknown"),
+                exc,
+            )
+            fallback_metrics = dict(rag_response.get("metrics", {}) or {})
+            metrics = {
+                **fallback_metrics,
+                "route_metrics": dict(fallback_metrics.get("route_metrics", {"decision": state.get("decision")})),
+            }
 
         # Update persistent metadata for next turn
         decision = state.get("decision")
         interpreted_question = state.get("interpreted_question", "")
+        last_question = state.get("last_question", "")
         if decision == "clarification":
-            last_question = state.get("last_question", "")
-            state["awaiting_clarification"] = True
-            state["last_clarification"] = state.get("clarification_question", "")
-            state["topic_hint"] = last_question or interpreted_question
+            awaiting_clarification = True
+            last_clarification = state.get("clarification_question", "")
+            topic_hint = last_question or interpreted_question
+            next_last_question = last_question
         else:
-            state["awaiting_clarification"] = False
-            state["last_clarification"] = ""
-            state["last_question"] = interpreted_question
-            state["topic_hint"] = interpreted_question
+            awaiting_clarification = False
+            last_clarification = ""
+            next_last_question = interpreted_question
+            topic_hint = interpreted_question
 
         sources = self.chat_agent._extract_sources_from_rag(rag_response)
         decision = state.get("decision")
@@ -315,6 +434,12 @@ class SimpleRouterApp:
             },
             "generated_by": generated_by,
         }
+        self.logger.info(
+            "node=finalize session=%s generated_by=%s answer_len=%d",
+            state.get("session_id", "unknown"),
+            generated_by,
+            len(response["answer"]),
+        )
 
         if state.get("appended_history"):
             response["rephrased_input"] = state.get("effective_question", "")
@@ -322,29 +447,52 @@ class SimpleRouterApp:
             response["clarification_question"] = state.get("clarification_question")
 
         if retrieval_error and decision != "clarification":
+            self.logger.warning(
+                "node=finalize session=%s retrieval_error=%s",
+                state.get("session_id", "unknown"),
+                retrieval_error,
+            )
             response["answer"] = (
                 "I ran into a connection issue while retrieving information. "
                 "Please try again in a moment or adjust your question."
             )
             response["generated_by"] = "retrieval_error_handler"
             metrics["generated_by"] = "retrieval_error_handler"
-            state["awaiting_clarification"] = False
-            state["last_clarification"] = ""
             metrics["route_metrics"]["decision"] = "error"
             metrics["route_metrics"]["retrieval_error"] = retrieval_error
             metrics["route_metrics"]["generated_by"] = "retrieval_error_handler"
+            awaiting_clarification = False
+            last_clarification = ""
 
-        messages.append({"role": "assistant", "content": response["answer"]})
-        state["messages"] = messages
-        state["metrics"] = metrics
-        state["response"] = response
+        updates: AgentState = {
+            "metrics": metrics,
+            "response": response,
+            "awaiting_clarification": awaiting_clarification,
+            "last_clarification": last_clarification,
+            "topic_hint": topic_hint,
+            "messages": [{"role": "assistant", "content": response["answer"]}],
+        }
+
+        updates["last_question"] = next_last_question
 
         # reset last retrieval error for next turn
         if hasattr(self.rag, "last_retrieval_error"):
             self.rag.last_retrieval_error = None
-        return state
+
+        return updates
 
     # Helpers ------------------------------------------------------------
 
     def invoke(self, state: AgentState) -> AgentState:
         return self.graph.invoke(state)
+
+    @staticmethod
+    def _safe_strip(value: Any) -> str:
+        if isinstance(value, str):
+            return value.strip()
+        if value is None:
+            return ""
+        try:
+            return str(value).strip()
+        except Exception:
+            return ""

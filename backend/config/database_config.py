@@ -22,6 +22,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 import chromadb
+from chromadb.config import Settings
 from typing import Optional, Dict, Any
 from llama_index.vector_stores.chroma import ChromaVectorStore
 from llama_index.core.storage import StorageContext
@@ -50,8 +51,9 @@ class DatabaseConfig:
                 from . import get_collection_name
                 self.collection_name = get_collection_name()
             
-            # Initialize ChromaDB client
-            self.chroma_client = chromadb.PersistentClient(path=self.db_path)
+            # Initialize ChromaDB client with telemetry disabled
+            settings = Settings(anonymized_telemetry=False, allow_reset=True)
+            self.chroma_client = chromadb.PersistentClient(path=self.db_path, settings=settings)
             
             # Get or create collection
             self.chroma_collection = self.chroma_client.get_or_create_collection(

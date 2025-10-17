@@ -120,7 +120,8 @@ class SystemConfig:
                 "max_tokens": 1000,
                 "llm_max_retry": 1,
                 "base_url": "https://api.openai.com/v1",
-                "use_openai_url": False
+                "use_openai_url": False,
+                "request_timeout": 30
             },
             
             # Logging Configuration - LOCAL ONLY, NO EXTERNAL TELEMETRY
@@ -205,6 +206,7 @@ class SystemConfig:
             "RAG_LLM_MAX_RETRY": ("models", "llm_max_retry"),
             "RAG_OPENAI_BASE_URL": ("models", "base_url"),
             "RAG_USE_OPENAI_URL": ("models", "use_openai_url"),
+            "RAG_LLM_TIMEOUT": ("models", "request_timeout"),
             
             # Logging
             "RAG_LOG_LEVEL": ("logging", "level"),
@@ -217,7 +219,7 @@ class SystemConfig:
                 # Convert string values to appropriate types
                 if key in ["chunk_size", "chunk_overlap", "port", "max_file_size_mb", "max_tokens", "llm_max_retry", "timeout_minutes", "cleanup_interval"]:
                     value = int(value)
-                elif key in ["temperature", "max_size_mb"]:
+                elif key in ["temperature", "max_size_mb", "request_timeout"]:
                     value = float(value)
                 elif key in ["enable_caching", "api_key_required", "enable_cors", "use_openai_url", "auto_extend"]:
                     value = value.lower() in ['true', '1', 'yes', 'on']

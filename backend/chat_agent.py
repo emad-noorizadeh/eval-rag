@@ -41,6 +41,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 from dataclasses import dataclass
 from enum import Enum
+import logging
 
 from .model_manager import ModelManager
 from .index_builder import IndexBuilder
@@ -140,6 +141,9 @@ class ChatAgent:
         self.index_builder = index_builder
         self.session_manager = session_manager
         self.config = config or ChatConfig()
+        self.logger = logging.getLogger(__name__ + ".chat_agent")
+        if not self.logger.handlers:
+            self.logger.setLevel(logging.INFO)
         
         # Initialize RAG with configured retrieval method
         self.rag = RAG(model_manager, index_builder, config.retrieval_method)
@@ -151,6 +155,17 @@ class ChatAgent:
         print(f"  - Retrieval: {self.config.retrieval_method.value}")
         print(f"  - Routing: {self.config.routing_strategy.value}")
     
+    @staticmethod
+    def _safe_str(value: Any) -> str:
+        if isinstance(value, str):
+            return value.strip()
+        if value is None:
+            return ""
+        try:
+            return str(value).strip()
+        except Exception:
+            return ""
+
     def _initialize_routing(self):
         """Initialize the routing strategy"""
         if self.config.routing_strategy == RoutingStrategy.INTELLIGENT:
@@ -159,6 +174,27 @@ class ChatAgent:
             self._router_app = None
         else:
             raise ValueError(f"Unsupported routing strategy: {self.config.routing_strategy}")
+
+    @staticmethod
+    def _sanitize_metrics(metrics: Any) -> Optional[Dict[str, Any]]:
+        """Ensure metrics are JSON-serializable dicts."""
+        if not isinstance(metrics, dict):
+            return None
+
+        def sanitize(value: Any):
+            if isinstance(value, (str, int, float, bool)) or value is None:
+                return value
+            if isinstance(value, list):
+                return [sanitize(item) for item in value]
+            if isinstance(value, dict):
+                return {str(k): sanitize(v) for k, v in value.items()}
+            if isinstance(value, set):
+                return [sanitize(item) for item in value]
+            if isinstance(value, tuple):
+                return [sanitize(item) for item in value]
+            return str(value)
+
+        return {key: sanitize(val) for key, val in metrics.items()}
     
     def chat(self, message: str, session_id: str, 
              conversation_history: List[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -269,8 +305,40 @@ class ChatAgent:
             "user_message": message.strip(),
         })
 
-        final_state = self._router_app.invoke(state)
-        response = final_state.get("response", {})
+        try:
+            final_state = self._router_app.invoke(state)
+        except Exception as exc:
+            self.logger.exception("router invocation failed: %s", exc)
+            fallback = {
+                "answer": (
+                    "I ran into an internal error while processing your message. "
+                    "Please try again or rephrase your question."
+                ),
+                "session_id": session_id,
+                "timestamp": datetime.now().isoformat(),
+                "metrics": {
+                    "confidence": "Low",
+                    "faithfulness": 0.0,
+                    "completeness": 0.0,
+                    "abstained": True,
+                    "answer_type": "error",
+                    "reasoning_notes": f"Router invocation error: {exc}",
+                    "missing_information": [],
+                    "context_utilization": "0%",
+                },
+                "sources": [],
+                "retrieval_metadata": {
+                    "method": self.config.retrieval_method.value,
+                    "total_chunks": 0,
+                    "routing_strategy": self.config.routing_strategy.value,
+                },
+            }
+            return fallback
+
+        response = final_state.get("response") or {}
+        sanitized_metrics = self._sanitize_metrics(response.get("metrics"))
+        if sanitized_metrics is not None:
+            response["metrics"] = sanitized_metrics
 
         session.agent_state = {
             "messages": final_state.get("messages", []),
@@ -331,14 +399,14 @@ class ChatAgent:
     ) -> Dict[str, Any]:
         """Create detailed metrics for the streamlined intelligent router."""
         basic_metrics = self._extract_metrics(rag_response)
-        response_metrics = rag_response.get("metrics", {})
+        response_metrics = rag_response.get("metrics", {}) or {}
         scores = [chunk.get("score", 0.0) for chunk in retrieved_chunks]
         max_score = max(scores) if scores else 0.0
         min_score = min(scores) if scores else 0.0
         context_length = sum(len(chunk.get("text", "")) for chunk in retrieved_chunks)
         sources = self._extract_sources(retrieved_chunks)
         
-        clarifying_question = response_metrics.get("clarifying_question", "")
+        clarifying_question = self._safe_str(response_metrics.get("clarifying_question"))
         abstained = bool(basic_metrics.get("abstained", True))
         if abstained and clarifying_question:
             decision = "clarification"
@@ -346,20 +414,28 @@ class ChatAgent:
             decision = "abstain"
         else:
             decision = "answer"
+
+        missing_information = basic_metrics.get("missing_information", [])
+        if isinstance(missing_information, str):
+            missing_information = [missing_information]
+
+        context_utilization = basic_metrics.get("context_utilization", "0%")
+        if context_utilization is None:
+            context_utilization = "0%"
         
         detailed_metrics = {
             **basic_metrics,
             "chunks_retrieved": sources,
             "ingest_metrics": {
-                "original_question": original_question,
-                "processed_question": effective_question,
+                "original_question": self._safe_str(original_question),
+                "processed_question": self._safe_str(effective_question),
                 "is_clarification_response": decision == "clarification",
                 "conversation_length": conversation_length,
-                "rephrased": original_question.strip() != effective_question.strip(),
+                "rephrased": self._safe_str(original_question) != self._safe_str(effective_question),
                 "summary": f"Processed {conversation_length} messages"
             },
             "retrieve_metrics": {
-                "question": effective_question,
+                "question": self._safe_str(effective_question),
                 "top_k": self.config.retrieval_top_k,
                 "chunks_retrieved": len(retrieved_chunks),
                 "avg_similarity": avg_score,
@@ -379,17 +455,17 @@ class ChatAgent:
                 "clarification_question": clarifying_question
             },
             "rag_metrics": {
-                "question": response_metrics.get("interpreted_question", effective_question),
+                "question": self._safe_str(response_metrics.get("interpreted_question", effective_question)),
                 "context_used": context_length,
-                "response_generated": rag_response.get("answer", ""),
+                "response_generated": self._safe_str(rag_response.get("answer")),
                 "clarification_question": clarifying_question,
                 "confidence": basic_metrics.get("confidence", "Low"),
                 "answer_type": basic_metrics.get("answer_type", "unknown"),
                 "faithfulness": basic_metrics.get("faithfulness", 0.0),
                 "completeness": basic_metrics.get("completeness", 0.0),
-                "context_utilization": basic_metrics.get("context_utilization", "0%"),
+                "context_utilization": context_utilization,
                 "reasoning_notes": basic_metrics.get("reasoning_notes", ""),
-                "missing_information": basic_metrics.get("missing_information", []),
+                "missing_information": missing_information,
                 "reasoning": f"Generated response with {len(retrieved_chunks)} chunks"
             },
             "clarify_metrics": {
@@ -399,6 +475,13 @@ class ChatAgent:
                 "summary": "Awaiting user response" if awaiting_clarification else "No pending clarification"
             }
         }
+        self.logger.debug(
+            "metrics decision=%s abstained=%s avg_score=%.3f context_length=%d",
+            decision,
+            abstained,
+            avg_score,
+            context_length,
+        )
         return detailed_metrics
 
     def _build_conversation_snippet(self, messages: List[Dict[str, Any]]) -> str:
