@@ -230,6 +230,18 @@ You can edit these fields in `config.json`, set them via environment variables (
 
 ---
 
+## Reports Directory Configuration
+
+The reports API (`/reports`, `/reports/{filename}`) reads PDF outputs from `reports.final_reports_path` (default `./reports/final`). Update it by:
+
+- Editing `config.json` (`"reports": { "final_reports_path": "<path>" }`),
+- Exporting `RAG_REPORTS_FINAL_PATH`, or
+- Running `python -m backend.setup.configurator` and supplying the desired directory when prompted.
+
+Relative paths are resolved against the project root; absolute paths are respected as-is. Titles shown in the UI come from `report_titles.json` located in the same folder.
+
+---
+
 ## Current Limitations & Next Steps
 
 - Router decisions still depend on hand-coded keyword maps for intent/subject detection. Scaling to new domains will require retraining or more adaptive classifiers.

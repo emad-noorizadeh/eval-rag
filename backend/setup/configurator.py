@@ -182,6 +182,15 @@ def configure_metrics() -> None:
         print("↳ spaCy NER disabled; retaining configured model for future use.")
 
 
+def configure_reports() -> None:
+    """Set the reports directory used for PDF listings."""
+    current_path = get_config("reports", "final_reports_path") or "./reports/final"
+    reports_path = prompt("Reports folder (relative or absolute)", current_path)
+    if reports_path:
+        set_config("reports", "final_reports_path", reports_path)
+        print(f"✓ Reports folder set to {reports_path}")
+
+
 def configure_cors() -> None:
     """Allow user to append trusted frontend origins for CORS."""
     current_origins = get_config("api", "cors_origins") or []
@@ -225,6 +234,7 @@ def main() -> None:
     configure_models_path()
     configure_model_defaults()
     configure_metrics()
+    configure_reports()
     configure_cors()
     configure_session_behavior()
 

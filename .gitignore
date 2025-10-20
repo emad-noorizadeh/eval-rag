@@ -96,6 +96,8 @@ yarn.lock
 !requirements.txt
 !**/requirements.txt
 *.pdf
+!reports/final/*.pdf
+!reports/final/**/*.pdf
 *.docx
 *.doc
 
