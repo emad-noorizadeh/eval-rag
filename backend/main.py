@@ -20,6 +20,7 @@ Author: Emad Noorizadeh
 # Load environment variables from .env file FIRST
 import os
 import sys
+import json
 from io import BytesIO
 
 BACKEND_DIR = os.path.dirname(__file__)
@@ -63,6 +64,7 @@ import logging
 import time
 
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form
+from fastapi.responses import FileResponse
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -533,6 +535,99 @@ def get_data_files():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _resolve_reports_folder() -> str:
+    configured_path = get_config("reports", "final_reports_path") or "./reports/final"
+    if not os.path.isabs(configured_path):
+        return os.path.abspath(os.path.join(PROJECT_ROOT, configured_path))
+    return configured_path
+
+
+def _reports_display_path() -> str:
+    configured_path = get_config("reports", "final_reports_path") or "./reports/final"
+    if os.path.isabs(configured_path):
+        rel_path = os.path.relpath(configured_path, PROJECT_ROOT)
+        if not rel_path.startswith(".."):
+            return f"./{rel_path}"
+    return configured_path
+
+
+@app.get("/reports")
+def list_reports():
+    """List generated PDF reports stored in the configured reports folder."""
+    reports_folder = _resolve_reports_folder()
+    if not os.path.exists(reports_folder):
+        return {
+            "reports": [],
+            "folder_path": reports_folder,
+            "total_reports": 0,
+            "total_size_mb": 0.0,
+            "error": "Reports folder does not exist",
+        }
+
+    titles = {}
+    titles_path = os.path.join(reports_folder, "report_titles.json")
+    if os.path.exists(titles_path):
+        try:
+            with open(titles_path, "r", encoding="utf-8") as titles_file:
+                data = json.load(titles_file)
+                if isinstance(data, dict):
+                    titles = {str(k): str(v) for k, v in data.items()}
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"⚠️ Failed to load report titles: {exc}")
+
+    report_files = []
+    for filename in os.listdir(reports_folder):
+        if filename.startswith('.'):
+            continue
+        if not filename.lower().endswith(".pdf"):
+            continue
+        file_path = os.path.join(reports_folder, filename)
+        if not os.path.isfile(file_path):
+            continue
+        stat = os.stat(file_path)
+        title = titles.get(filename)
+        if title is None:
+            title = os.path.splitext(filename)[0].replace("_", " ").title()
+        report_files.append({
+            "name": filename,
+            "title": title,
+            "size_bytes": stat.st_size,
+            "size_mb": round(stat.st_size / (1024 * 1024), 2),
+            "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+        })
+
+    report_files.sort(key=lambda x: x["modified"], reverse=True)
+    total_size = round(sum(item["size_mb"] for item in report_files), 2)
+
+    return {
+        "reports": report_files,
+        "folder_path": _reports_display_path(),
+        "total_reports": len(report_files),
+        "total_size_mb": total_size,
+    }
+
+
+@app.get("/reports/{filename}")
+def get_report(filename: str):
+    """Serve a specific PDF report."""
+    reports_folder = _resolve_reports_folder()
+    file_path = os.path.join(reports_folder, filename)
+
+    resolved_reports_folder = os.path.abspath(reports_folder)
+    resolved_file_path = os.path.abspath(file_path)
+
+    if not resolved_file_path.startswith(resolved_reports_folder):
+        raise HTTPException(status_code=400, detail="Invalid file path")
+
+    if not os.path.exists(resolved_file_path) or not os.path.isfile(resolved_file_path):
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    if not resolved_file_path.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF reports are supported")
+
+    return FileResponse(resolved_file_path, media_type="application/pdf", filename=filename)
 
 @app.get("/data-files/{filename}")
 def get_file_content(filename: str):

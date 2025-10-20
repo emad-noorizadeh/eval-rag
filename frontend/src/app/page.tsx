@@ -11,6 +11,7 @@ import QueryInterface from '@/components/QueryInterface';
 import DocumentList from '@/components/DocumentList';
 import ChatInterface from '@/components/ChatInterface';
 import Settings from '@/components/Settings';
+import ReportsViewer from '@/components/ReportsViewer';
 import { useSession } from '@/hooks/useSession';
 
 // Define Message interface for chat
@@ -63,7 +64,7 @@ interface Message {
 }
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<'upload' | 'query' | 'documents' | 'chat' | 'settings'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'query' | 'documents' | 'chat' | 'settings' | 'reports'>('upload');
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentMetrics, setCurrentMetrics] = useState<any>(null);
@@ -112,6 +113,15 @@ export default function Home() {
                 }`}
             >
               Settings
+            </button>
+            <button
+              onClick={() => setActiveTab('reports')}
+              className={`px-6 py-2 rounded-md transition-colors ${activeTab === 'reports'
+                ? 'bg-blue-500 text-white'
+                : 'text-gray-600 hover:text-gray-900'
+                }`}
+            >
+              Reports
             </button>
             <button
               onClick={() => setActiveTab('upload')}
@@ -169,6 +179,7 @@ export default function Home() {
             setExpandedSources={setExpandedSources}
           />}
           {activeTab === 'settings' && <Settings />}
+          {activeTab === 'reports' && <ReportsViewer />}
         </div>
       </div>
     </div>

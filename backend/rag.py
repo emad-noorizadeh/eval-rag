@@ -160,7 +160,11 @@ class RAG:
             )
 
             if not self.model_manager.get_openai_client():
-                return self._create_fallback_response(question, retrieved)
+                return self._create_fallback_response(
+                    question,
+                    retrieved,
+                    reason="model_unavailable",
+                )
 
             max_retry = get_config("models", "llm_max_retry")
             try:
@@ -172,6 +176,8 @@ class RAG:
             attempt = 0
             current_prompt = base_prompt
             last_error = ""
+            fallback_reason = ""
+            last_response_text = ""
 
             scores = [chunk.get("score", 0.0) for chunk in retrieved]
             avg_similarity = sum(scores) / len(scores) if scores else 0.0
@@ -189,6 +195,7 @@ class RAG:
                     avg_similarity,
                 )
                 response_text = self.model_manager.generate_text([{"role": "user", "content": current_prompt}])
+                last_response_text = response_text
                 data = self._parse_json_response(response_text) or {}
                 is_valid, normalized, error_msg = self._validate_response_schema(data)
 
@@ -209,6 +216,12 @@ class RAG:
                             self.logger.warning(
                                 "generate_response: abstained despite sufficient context (attempt=%d)",
                                 attempt,
+                            )
+                            fallback_reason = "abstained_after_retry"
+                            self.logger.warning(
+                                "generate_response: forced_fallback reason=%s excerpt='%s'",
+                                fallback_reason,
+                                self._truncate_for_log(last_response_text),
                             )
                             break
                         repair_reason = (
@@ -244,15 +257,33 @@ class RAG:
                         attempt,
                         last_error,
                     )
+                    fallback_reason = "schema_validation_failed"
+                    self.logger.warning(
+                        "generate_response: forced_fallback reason=%s excerpt='%s'",
+                        fallback_reason,
+                        self._truncate_for_log(last_response_text),
+                    )
                     break
                 current_prompt = self._build_repair_prompt(base_prompt, response_text, last_error)
 
-            return self._create_fallback_response(question, retrieved)
+            if not fallback_reason:
+                fallback_reason = "unknown"
+            return self._create_fallback_response(
+                question,
+                retrieved,
+                reason=fallback_reason,
+                raw_response=last_response_text,
+            )
 
         except Exception as e:
             print(f"Error generating structured response: {e}")
             self.logger.exception("generate_response: exception")
-            return self._create_fallback_response(question, retrieved)
+            return self._create_fallback_response(
+                question,
+                retrieved,
+                reason="generation_exception",
+                raw_response=str(e),
+            )
     
     def retrieve_documents_union_if_needed(self, original_query: str, hint_query: str, n_results: int, use_union: bool):
         """Union retrieval helper called by router's retrieve"""
@@ -419,29 +450,80 @@ class RAG:
             }
         }
     
-    def _create_fallback_response(self, query: str, retrieved_docs: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Create fallback response when model is not available"""
+    def _create_fallback_response(
+        self,
+        query: str,
+        retrieved_docs: List[Dict[str, Any]],
+        reason: str = "model_unavailable",
+        raw_response: str = "",
+    ) -> Dict[str, Any]:
+        """Create fallback response with reason-aware messaging."""
+        reason = reason or "unknown"
         if retrieved_docs:
-            response = f"I found {len(retrieved_docs)} relevant documents, but I need a language model to generate a proper response. Here are the relevant sources:\n\n"
+            header_map = {
+                "model_unavailable": "I found {count} relevant documents, but I need a language model to generate a proper response.",
+                "abstained_after_retry": "I found {count} relevant documents, but the language model abstained after multiple attempts.",
+            }
+            header = header_map.get(reason, "I found {count} relevant documents but could not generate an answer.")
+            response_lines = [
+                header.format(count=len(retrieved_docs)),
+                "",
+                "Here are the relevant sources:",
+            ]
             for i, doc in enumerate(retrieved_docs, 1):
-                response += f"{i}. {doc['text'][:200]}...\n"
+                preview = doc.get("text", "")[:200]
+                response_lines.append(f"{i}. {preview}...")
+            response = "\n".join(response_lines).strip()
         else:
-            response = "I couldn't find any relevant documents in the database. Please upload some documents first, or try rephrasing your question."
-        
+            fallback_map = {
+                "model_unavailable": "I couldn't find any relevant documents in the database. Please upload some documents first, or try rephrasing your question.",
+                "abstained_after_retry": "I retrieved some context, but the language model kept abstaining even with retries. Please rephrase your question or adjust your guardrails.",
+            }
+            response = fallback_map.get(
+                reason,
+                "I couldn't generate a response due to an internal issue. Please try again.",
+            )
+
+        missing_info_map = {
+            "model_unavailable": ["Model not available"],
+            "abstained_after_retry": ["Model abstained after retries"],
+            "schema_validation_failed": ["Model output could not be parsed"],
+            "generation_exception": ["Error during answer generation"],
+            "unknown": ["Unspecified fallback reason"],
+        }
+        reasoning_map = {
+            "model_unavailable": "Fallback response because the language model client is not configured or reachable.",
+            "abstained_after_retry": "Fallback response because the language model abstained despite sufficient context.",
+            "schema_validation_failed": "Fallback response because the model did not produce valid JSON after retries.",
+            "generation_exception": "Fallback response because an exception occurred while generating the answer.",
+            "unknown": "Fallback response triggered for an unspecified reason.",
+        }
+
+        metrics = {
+            "chunks_retrieved": [],
+            "confidence": "Low",
+            "faithfulness_score": 0.0,
+            "completeness_score": 0.0,
+            "missing_information": missing_info_map.get(reason, ["Unspecified fallback reason"]),
+            "answer_type": "abstain",
+            "abstained": True,
+            "reasoning_notes": reasoning_map.get(reason, reasoning_map["unknown"]),
+            "fallback_reason": reason,
+        }
+        if raw_response:
+            metrics["raw_response_excerpt"] = self._truncate_for_log(raw_response)
         return {
             "answer": response,
             "sources": retrieved_docs,
-            "metrics": {
-                "chunks_retrieved": [],
-                "confidence": "Low",
-                "faithfulness_score": 0.0,
-                "completeness_score": 0.0,
-                "missing_information": ["Model not available"],
-                "answer_type": "abstain",
-                "abstained": True,
-                "reasoning_notes": "Fallback response due to model unavailability"
-            }
+            "metrics": metrics,
         }
+
+    @staticmethod
+    def _truncate_for_log(text: str, limit: int = 500) -> str:
+        text = (text or "").replace("\n", " ").strip()
+        if len(text) <= limit:
+            return text
+        return text[:limit] + "..."
     
     
     def query(self, query: str, n_results: int = 5, 

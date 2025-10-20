@@ -37,7 +37,7 @@ Key Features:
 Author: Emad Noorizadeh
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
 from dataclasses import dataclass
 from enum import Enum
@@ -459,7 +459,8 @@ class ChatAgent:
                 "context_used": context_length,
                 "response_generated": self._safe_str(rag_response.get("answer")),
                 "clarification_question": clarifying_question,
-                "confidence": basic_metrics.get("confidence", "Low"),
+                "confidence": basic_metrics.get("confidence", "Unknown"),
+                "confidence_explanation": basic_metrics.get("confidence_explanation", ""),
                 "answer_type": basic_metrics.get("answer_type", "unknown"),
                 "faithfulness": basic_metrics.get("faithfulness", 0.0),
                 "completeness": basic_metrics.get("completeness", 0.0),
@@ -545,7 +546,8 @@ class ChatAgent:
                 "context_used": "\n".join([source.get("text", "") for source in sources]),
                 "response_generated": rag_response.get("answer", ""),
                 "clarification_question": "",
-                "confidence": basic_metrics.get("confidence", "Medium"),
+                "confidence": basic_metrics.get("confidence", "Unknown"),
+                "confidence_explanation": basic_metrics.get("confidence_explanation", ""),
                 "answer_type": basic_metrics.get("answer_type", "unknown"),
                 "reasoning": f"Generated response with {len(sources)} chunks using simple routing"
             },
@@ -566,7 +568,8 @@ class ChatAgent:
         """Extract metrics from RAG response"""
         if not rag_response or "metrics" not in rag_response:
             return {
-                "confidence": 0.0,
+                "confidence": "Unknown",
+                "confidence_explanation": "",
                 "faithfulness": 0.0,
                 "completeness": 0.0,
                 "abstained": True,
@@ -578,8 +581,12 @@ class ChatAgent:
         
         metrics = dict(rag_response["metrics"])
         
+        abstained_flag = bool(metrics.get("abstained", True))
+
         context_utilization = metrics.get("context_utilization")
-        if not isinstance(context_utilization, dict):
+        if abstained_flag:
+            context_utilization = "0%"
+        elif not isinstance(context_utilization, dict):
             answer_text = (rag_response.get("answer") or metrics.get("answer") or "").strip()
             sources = rag_response.get("sources") or []
             context_snippets = [
@@ -600,37 +607,75 @@ class ChatAgent:
             else:
                 context_utilization = context_utilization or "0%"
 
+        confidence_label, confidence_explanation = self._normalize_confidence(metrics.get("confidence"))
+
+        missing_information = metrics.get("missing_information", [])
+        if isinstance(missing_information, str):
+            missing_information = [missing_information]
+
         return {
-            "confidence": metrics.get("confidence", 0.0),
+            "confidence": confidence_label,
+            "confidence_explanation": confidence_explanation,
             "faithfulness": metrics.get("faithfulness_score", 0.0),  # RAG returns faithfulness_score
             "completeness": metrics.get("completeness_score", 0.0),  # RAG returns completeness_score
-            "abstained": metrics.get("abstained", True),
+            "abstained": abstained_flag,
             "answer_type": metrics.get("answer_type", "unknown"),
             "reasoning_notes": metrics.get("reasoning_notes", ""),
-            "missing_information": metrics.get("missing_information", []),
+            "missing_information": missing_information,
             "context_utilization": context_utilization
         }
+
+    @staticmethod
+    def _normalize_confidence(value: Any) -> Tuple[str, str]:
+        """Normalize confidence to High/Medium/Low with optional explanation."""
+        if value is None:
+            return "Unknown", ""
+
+        if isinstance(value, (int, float)):
+            val = float(value)
+            if 0.0 <= val <= 1.0:
+                if val >= 0.66:
+                    return "High", ""
+                if val >= 0.33:
+                    return "Medium", ""
+                return "Low", ""
+            return "Unknown", str(value)
+
+        if isinstance(value, str):
+            lower = value.strip().lower()
+            if "high" in lower:
+                return "High", "" if lower == "high" else value
+            if "medium" in lower or "moderate" in lower:
+                return "Medium", "" if lower in {"medium", "moderate"} else value
+            if "low" in lower:
+                return "Low", "" if lower == "low" else value
+            return "Unknown", value
+
+        return "Unknown", str(value)
     
     def _extract_sources(self, chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Extract sources from chunks"""
         sources = []
         for chunk in chunks:
             # Handle both router format (cid, text, score) and RAG format (chunk_id, doc_id, text, score, metadata)
+            raw_text = chunk.get("text", "") or ""
+            preview = raw_text[:200] + "..." if len(raw_text) > 200 else raw_text
+
             if "cid" in chunk:
-                # Router format
                 source = {
                     "chunk_id": chunk.get("cid", ""),
-                    "doc_id": "",  # Not available in router format
-                    "text": chunk.get("text", "")[:200] + "..." if len(chunk.get("text", "")) > 200 else chunk.get("text", ""),
+                    "doc_id": "",
+                    "text": preview,
+                    "text_length": len(raw_text),
                     "score": chunk.get("score", 0.0),
                     "metadata": {}
                 }
             else:
-                # RAG format
                 source = {
                     "chunk_id": chunk.get("chunk_id", ""),
                     "doc_id": chunk.get("doc_id", ""),
-                    "text": chunk.get("text", "")[:200] + "..." if len(chunk.get("text", "")) > 200 else chunk.get("text", ""),
+                    "text": preview,
+                    "text_length": len(raw_text),
                     "score": chunk.get("score", 0.0),
                     "metadata": chunk.get("metadata", {})
                 }
@@ -641,10 +686,12 @@ class ChatAgent:
         """Extract sources from RAG response"""
         sources = []
         for source in rag_response.get("sources", []):
+            raw_text = source.get("text", "") or ""
             sources.append({
                 "chunk_id": source.get("chunk_id", ""),
                 "doc_id": source.get("doc_id", ""),
-                "text": source.get("text", ""),
+                "text": raw_text[:200] + "..." if len(raw_text) > 200 else raw_text,
+                "text_length": len(raw_text),
                 "score": source.get("score", 0.0),
                 "metadata": source.get("metadata", {})
             })

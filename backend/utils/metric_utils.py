@@ -34,6 +34,8 @@ from typing import List, Dict, Any, Tuple, Optional
 from collections import Counter, defaultdict
 from math import log, sqrt
 
+from backend.config import get_config
+
 # Minimal, deterministic utilities
 
 _STOPWORDS = {
@@ -891,15 +893,27 @@ def calculate_context_utilization_percentage(answer: str, context_snippets: List
         - unsupported_numbers: Numeric facts in answer not in context
         - summary: Human-readable summary of metrics
     """
-    # Use the advanced function with default settings
+    metrics_config = {}
+    try:
+        metrics_config = get_config("metrics") or {}
+    except Exception:
+        metrics_config = {}
+
+    use_spacy_ner = metrics_config.get("use_spacy_ner", True)
+    if isinstance(use_spacy_ner, str):
+        use_spacy_ner = use_spacy_ner.lower() in {"true", "1", "yes", "on"}
+
+    spacy_model = metrics_config.get("spacy_model", "en_core_web_sm")
+    
+    # Use the advanced function with configurable settings
     return context_utilization_report_with_entities(
         question="",  # No question context for backward compatibility
         answer=answer,
         retrieved_contexts=context_snippets,
         use_bm25_for_best=True,
         use_embed_alignment=False,  # Disable by default for performance
-        use_spacy_ner=False,  # Disable by default for performance
-        spacy_model="en_core_web_sm"
+        use_spacy_ner=use_spacy_ner,
+        spacy_model=spacy_model or "en_core_web_sm"
     )
 
 

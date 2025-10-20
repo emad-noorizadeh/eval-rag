@@ -23,7 +23,11 @@ export const API_ENDPOINTS = {
   // Data file endpoints
   DATA_FILES: `${API_BASE_URL}/data-files`,
   DATA_FILE_CONTENT: (filename: string) => `${API_BASE_URL}/data-files/${encodeURIComponent(filename)}`,
-  
+
+  // Reports endpoints
+  REPORTS: `${API_BASE_URL}/reports`,
+  REPORT_FILE: (filename: string) => `${API_BASE_URL}/reports/${encodeURIComponent(filename)}`,
+
   // Collection endpoints
   COLLECTION_INFO: `${API_BASE_URL}/collection/info`,
   

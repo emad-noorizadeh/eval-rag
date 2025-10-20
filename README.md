@@ -12,6 +12,7 @@ Modern evaluation harness for Retrieval-Augmented Generation (RAG) systems. The 
 - **API key resilience** – OpenAI credentials resolve from environment variables, config, or a local fallback file (`~/.openai_key`), so automation runs in clean shells.
 - **Schema repair** – Guarded answer responses are schema-validated; invalid JSON triggers an automatic repair prompt up to `models.llm_max_retry` times (default 1).
 - **Observability** – Consistent logging of router decisions, clarification counts, coverage metrics, and storage stats.
+- **Research report library** – The frontend surfaces generated PDF reports from `reports/final/`, with friendly titles driven by `report_titles.json` and one-click view/download actions.
 
 ---
 
@@ -111,6 +112,13 @@ This guarantees alignment between configured embedding model and stored vectors.
 
 The intelligent path is implemented in `backend/router_graph.py` as a LangGraph `StateGraph`. Every user turn walks the same deterministic graph, allowing you to reason about routing decisions node-by-node while still keeping the guarded answer LLM as the single “truth oracle”.
 
+```
+START
+  └── ingest
+        └── frustration ── skip_to_finalize → finalize → END
+                              └── continue → build_query → retrieve → answer → decide → finalize → END
+```
+
 ### State Model
 
 `AgentState` is a typed dictionary that LangGraph threads through the graph. It has three buckets of fields:
@@ -128,7 +136,7 @@ This separation keeps the graph pure (all state is explicit) and makes it easy t
 | `ingest` | Normalize the incoming message | Appends the raw user message to `messages` and ensures the persistent metadata keys are initialized. |
 | `frustration` | Short-circuit on obvious frustration | Looks for frustration tokens (e.g., “confusing”, “hard”) in non-question utterances. When triggered it returns a stock clarification question without touching retrieval or the LLM, increments `clarify_count`, and marks the decision as `clarification`. |
 | `build_query` | Derive the “effective” question for retrieval | Handles acknowledgements and follow-ups: if the user is replying to an earlier clarification or sends a short fragment, it stitches the fragment to the previous interpreted question; acknowledgements reuse the last question entirely. The result is stored as `effective_question`, and we note whether history was appended (used later for metrics/UI). |
-| `retrieve` | Fetch candidate context | Calls `RAG.retrieve_documents` once using the configured `top_k`. Scores and average similarity are cached in the state so downstream nodes and metrics do not redo the work. |
+| `retrieve` | Fetch candidate context | Calls `RAG.retrieve_documents` once using the configured `top_k` and similarity threshold. Keeps per-chunk scores, IDs, and the average so downstream nodes and metrics do not redo the work and the router can judge grounding strength. |
 | `answer` | Run the guarded answer LLM | Builds a conversation snippet (last *k* turns) plus the current `topic_hint`, then calls `RAG.generate_response`. The raw RAG payload (answer, metrics, sources) is saved in `rag_response`. |
 | `decide` | Interpret the LLM response | Reads `rag_response.metrics`. If the model abstained and supplied a `clarifying_question`, we switch to clarification mode and increment `clarify_count`. A bare abstain becomes an `abstain` decision. Otherwise we treat it as an answer. The resolved `answer_text`, `decision`, `clarification_question`, and latest `interpreted_question` are written to the state. |
 | `finalize` | Assemble the public response and persist session state | Builds the rich metrics blob via `ChatAgent._create_intelligent_metrics`, converts raw chunks into `sources`, attaches retrieval metadata, and stamps timestamps. It also updates persistent metadata so the next turn knows whether we are awaiting a clarification and what the “topic hint” should be. Any retrieval errors from the RAG pipeline are surfaced here with a graceful message. Finally the compiled response is placed in `state["response"]` and the assistant turn is appended to the conversation history. |
@@ -148,6 +156,19 @@ START → ingest → frustration ──┐
 - **Debug output** – `finalize` calls `ChatAgent._create_intelligent_metrics`, which merges the base metrics from the LLM with retrieval stats (scores, context length, chunk IDs), ingest summaries, and clarification bookkeeping. These metrics feed the frontend debug panel, including the new context-utilization highlights.
 
 Together, these pieces give you a transparent router: you can inspect the state entering or leaving any node, replay hops during debugging, and extend the graph (for example, by inserting a tool-use branch) without altering the core ChatAgent API.
+
+---
+
+## Routing Decisions & Guardrails
+
+The router guarantees that every turn ends in one of three dispositions—answer, clarification, or abstain—driven by the following logic:
+
+- **Similarity checks**: `retrieve` records `avg_similarity` and `route_metrics.above_threshold` compares it against `chat_agent.similarity_threshold` (default `0.45`). If the value drops below threshold, any abstain is attributed to the `router_guard`, signalling an out-of-domain or poorly supported query.
+- **Clarification loop**: When the guarded LLM returns an abstain with `clarifying_question`, `decide` sets `awaiting_clarification=True`, increments `clarify_count`, and the router echoes the question back. Follow-up fragments automatically prepend the original `last_question`, preserving context until the user answers the clarification.
+- **Frustration safety net**: `frustration` looks for negative sentiment tokens in declarative statements and injects a gentle clarification prompt without touching retrieval or the LLM, keeping token usage low while guiding the user.
+- **Fallback tracking**: `RAG.generate_response` annotates any forced abstain with `fallback_reason` (`model_unavailable`, `abstained_after_retry`, `schema_validation_failed`, `generation_exception`). `finalize` copies this into `metrics.generated_by` so the frontend can explain whether the abstain came from weak retrieval, repeated LLM refusal, or infrastructure issues.
+
+Detailed log lines in `logs/rag_system_local.log`—especially `node=decide` and `node=finalize`—mirror these decisions, making it easy to correlate UI behaviour with backend routing.
 
 ---
 
@@ -195,6 +216,17 @@ You will be prompted (optionally) to update:
 - **Session auto-extend** – toggle whether the UI should auto-renew sessions on user activity (`session.auto_extend`).
 
 Press Enter to keep existing values; the script only overwrites settings you supply. After running it, restart the backend to pick up the new configuration.
+
+---
+
+## Metrics Configuration
+
+Context-utilization metrics now support configurable entity extraction:
+
+- `metrics.use_spacy_ner` (default `true`) toggles spaCy-powered NER to augment regex entity matching when computing grounded coverage.
+- `metrics.spacy_model` selects the spaCy model to load (default `en_core_web_sm`).
+
+You can edit these fields in `config.json`, set them via environment variables (`RAG_METRICS_USE_SPACY_NER`, `RAG_METRICS_SPACY_MODEL`), or adjust them with the interactive configurator. When the toggle is off the pipeline falls back to the lightweight regex extractors only.
 
 ---
 

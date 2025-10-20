@@ -416,8 +416,12 @@ class SimpleRouterApp:
                 generated_by = "answer_guard"
 
         route_metrics["generated_by"] = generated_by
+        route_metrics.setdefault("decision", decision)
         metrics["generated_by"] = generated_by
         metrics["route_metrics"] = route_metrics
+
+        if decision == "abstain" and isinstance(metrics.get("context_utilization"), dict):
+            metrics["context_utilization"] = "0%"
 
         response = {
             "answer": state.get("answer_text", ""),

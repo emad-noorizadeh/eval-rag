@@ -1,0 +1,129 @@
+
+\documentclass[11pt]{article}
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{ragged2e}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=black,urlcolor=blue}
+
+\newcolumntype{Y}{>{\RaggedRight\arraybackslash}X}
+
+\title{Clarification in Conversational RAG:\\Experiments, Pitfalls, and a Path Forward}
+\author{Emad Noorizadeh \\ Bank of America}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We attempted to add ``ask-one'' clarifying questions to a production Retrieval-Augmented Generation (RAG) assistant without harming latency or groundedness. We explored two families of solutions: \textbf{(A)} an LLM-driven clarification policy embedded in the generation prompt; and \textbf{(B)} a deterministic retrieval-dispersion gate using entropy/perplexity over top results, with template-based clarifying questions. This report documents what we built, what failed on real conversations (e.g., \emph{``show all bank of america products''}), why it failed, and what conditions must hold for each approach to become viable. We conclude with a pragmatic next step: postpone clarification and introduce an intent classifier that governs RAG behavior (including out-of-domain and vague utterances) and can route to intent-scoped indices or fall back to the full collection when warranted.
+\end{abstract}
+
+\section{System Context and Baseline}
+\paragraph{Baseline.} The assistant is a RAG system with sentence-level chunking and dense embedding retrieval. The language model (LLM) answers strictly from provided grounding context, and abstains when context is insufficient. The LangGraph pipeline is \texttt{START $\rightarrow$ ingest $\rightarrow$ frustration $\rightarrow$ build\_query $\rightarrow$ retrieve $\rightarrow$ answer $\rightarrow$ decide $\rightarrow$ finalize $\rightarrow$ END}. Prior to our experiments, clarification was only triggered by explicit user frustration (keywords) or if the LLM itself returned a clarifying question along with \texttt{abstained=true}. In practice, this rarely occurred.
+
+\section{Attempt A: LLM-Driven Clarification Policy}
+\subsection{Design}
+We expanded the main RAG prompt to include a conservative clarification policy: the LLM should propose a clarifying question if a faithful answer would exceed a word budget (150 words) and cover multiple ``facets''; otherwise produce a concise answer. The JSON schema included fields such as \texttt{should\_clarify}, \texttt{estimated\_answer\_words}, and \texttt{facet\_count}. The \texttt{decide} node then routed to clarification when \texttt{abstained=true \&\& clarifying\_question != ""}.
+
+\subsection{Observed Behavior and Failures}
+\begin{itemize}[leftmargin=1.25em]
+  \item \textbf{The model almost never asked to clarify.} Given sufficient context, the LLM prefers to answer rather than ask, due to helpfulness bias in instruction-tuned models.
+  \item \textbf{Coupling to ``abstain.''} Our router clarified only when the LLM abstained; however, ambiguity (wide scope) is \emph{not} the same as insufficiency. The LLM rarely abstained on broad queries, so clarification rarely triggered.
+  \item \textbf{Length planning is weak.} Asking the LLM to predict word counts or number of facets before generation was poorly calibrated; once decoding starts, models tend to complete an answer rather than pivot into a question.
+\end{itemize}
+
+\subsection{Example}
+\emph{User:} ``explain all bank of america products'' \quad
+\emph{Actual:} Often a long answer or abstention; rarely a clarifying question. \quad
+\emph{Why:} The LLM had enough context to attempt an answer, so it did not abstain and our clarify path remained dormant.
+
+\subsection{Viability Conditions}
+For an LLM-only policy to work reliably, the system must enforce \emph{structured gating} in post-processing: reject over-length, multi-facet answers and convert them into a single clarifying question. This adds complexity and erodes latency gains. Without such enforcement, precision of the clarify decision is not high enough for production.
+
+\section{Attempt B: Deterministic Clarification Gate (Entropy/Perplexity)}
+\subsection{Design Overview}
+We moved the clarify decision outside the LLM and measured dispersion over the top-$K$ retrieved \emph{documents}. Let $r$ be 1-based rank and $w_r = 1/\log_2(2+r)$. For document $d$, with ranks $\mathcal{R}(d)$ in the top-$K$:
+\begin{align}
+p(d) &= \frac{\sum_{r \in \mathcal{R}(d)} w_r}{\sum_{r=1}^K w_r}, \quad
+H_{\text{doc}} = - \sum_d p(d)\,\ln p(d), \quad
+E_{\text{doc}} = \exp\!\big(H_{\text{doc}}\big).
+\end{align}
+We interpret $E_{\text{doc}}$ as the \emph{effective number of distinct document modes}. We then maintain a tiny online scalar $\mu$ (words per mode) and predict faithful answer length as $\widehat{L} = \mu \cdot E_{\text{doc}}$. The gate asks exactly one clarifying question iff: retrieval is sufficient, $E_{\text{doc}} \ge 3$, top-mass $p_{\max} < 0.55$, and $\widehat{L} > 150$ words. The clarifying question is template-based using top document labels; optional LLM rephrase is allowed under strict constraints (same options, JSON-validated).
+
+\subsection{Labeling and Question Text}
+Labels are derived from per-document metadata: prefer \texttt{title} $\rightarrow$ \texttt{section} $\rightarrow$ cleaned \texttt{source} path. The question template is:
+\begin{quote}
+\emph{This can be concise or comprehensive. Prefer a full overview of everything, or focus on one of: \{label$_1$, label$_2$, label$_3$\}?}
+\end{quote}
+We always include chips for \texttt{Full overview} and \texttt{Other}.
+
+\subsection{What Failed in Our Runs}
+\begin{itemize}[leftmargin=1.25em]
+  \item \textbf{Gate computed on too few hits ($K=5$).} With only five results, $E_{\text{doc}}$ rarely exceeded 3 even for broad queries. Our logs showed $E_{\text{doc}}\approx 1.9$ and $p_{\max}\approx 0.65$---not enough to trigger the gate.
+  \item \textbf{Dirty labels.} Boilerplate like ``skip to content'' and cookie banners polluted labels, preventing meaningful options.
+  \item \textbf{Calibrator drift.} We inadvertently updated $\mu$ even when the LLM abstained, biasing predicted lengths.
+  \item \textbf{No post-LLM fallback.} When the LLM abstained on a broad query, we still returned abstain instead of asking the deterministic clarifying question.
+\end{itemize}
+
+\subsection{Examples with Logs (Fits Page Width)}
+\begin{table}[h]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}Y Y c Y Y@{}}
+\toprule
+\textbf{Query} & \textbf{Expected} & \textbf{Gate Inputs} & \textbf{Actual} & \textbf{Root Cause} \\
+\midrule
+\texttt{what is tier} & Answer & $E_{\text{doc}}{=}1.88$, $p_{\max}{=}0.68$ & Answer & Correct: single-mode, concise \\
+\texttt{show all bank of america products} & Clarify & $E_{\text{doc}}{=}1.92$, $p_{\max}{=}0.65$ (with $K{=}5$) & Abstain & $K$ too small; label noise; no fallback \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Viability Conditions}
+This deterministic gate is viable if and only if the following hold:
+\begin{enumerate}[leftmargin=1.25em]
+  \item \textbf{Evidence depth:} compute dispersion on $K\in[30,50]$ (metadata-only retrieval is fine); still send a small $k$ to the LLM for context.
+  \item \textbf{Stable parent IDs:} chunks must carry a canonical \texttt{parent\_doc\_id}; dedupe near-duplicates before computing $p(d)$.
+  \item \textbf{Label hygiene:} sanitize labels against boilerplate (e.g., remove ``skip to content'', images, cookie text).
+  \item \textbf{Update $\mu$ only on delivered answers.} Never on abstain/clarify turns.
+  \item \textbf{Post-LLM fallback:} if LLM abstains, trigger the deterministic CQ when $E_{\text{doc}}$ indicates ambiguity.
+\end{enumerate}
+Without these, the gate will under-trigger (low recall) and UX regresses to abstain.
+
+\section{Why Clarification is Hard for LLMs}
+\begin{itemize}[leftmargin=1.25em]
+  \item \textbf{Helpfulness bias:} instruction-tuned models tend to answer rather than ask, if enough context exists to assemble any answer.
+  \item \textbf{Ambiguity $\neq$ insufficiency:} Clarification is a scope control problem; abstain policies capture missing facts, not breadth.
+  \item \textbf{Planning vs decoding:} Reliable length/facet forecasting would require pre-planning; single-pass generation commits early and rarely pivots to questions.
+  \item \textbf{Ambiguity has many forms:} referential (pronouns), taxonomic breadth (``all products''), underspecified constraints (``best account''), and temporal scope---a single general rule is hard to learn implicitly.
+  \item \textbf{Retrieval masks ambiguity:} rich context makes questions appear answerable; the model follows the path of least resistance.
+\end{itemize}
+
+\section{Decision and Next Step: Intent Classifier First}
+Given maintenance cost and the strict preconditions above, we defer clarification and adopt an \textbf{intent classifier} to govern RAG behavior.
+
+\subsection{Plan}
+\begin{enumerate}[leftmargin=1.25em]
+  \item \textbf{Taxonomy:} define a compact set of intents covering the corpus (e.g., Checking, Savings, Cards, Loans, Preferred Rewards, Fees, Eligibility, Overview/All, OOD).
+  \item \textbf{Training data:} bootstrap with silver labels from logs (query $\rightarrow$ clicked doc family); optionally expand with LLM-assisted labeling and manual review for borderline cases.
+  \item \textbf{Routing:} if intent confidence $\ge \tau$: retrieve from the corresponding intent collection/index; else fall back to full collection.
+  \item \textbf{Vague/OOD:} for low confidence or OOD, show suggestions/chips (intent options) or abstain gracefully; allow ``Overview/All'' to explicitly opt into full-collection summaries.
+  \item \textbf{Fail-safe:} user can always click ``Full overview'' or reformulate; the classifier never blocks answering---it only scopes retrieval.
+\end{enumerate}
+
+\subsection{Benefits}
+\begin{itemize}[leftmargin=1.25em]
+  \item \textbf{Stability:} deterministic routing improves precision without relying on model self-assessment.
+  \item \textbf{Maintainability:} intent definitions evolve with the corpus; no deep coupling to generation prompts.
+  \item \textbf{Dual use:} the classifier aids both \emph{query understanding} (govern behavior) and \emph{index selection} (intent-scoped retrieval).
+\end{itemize}
+
+\section{Conclusion}
+Our LLM-driven policy under-triggered (models prefer answering), and our first deterministic gate under-triggered due to insufficient evidence ($K{=}5$), noisy labels, and calibrator updates on abstains. Making clarification work well requires deeper retrieval instrumentation and careful hygiene that add maintenance burden. As a pragmatic next step, we will deploy an intent classifier that both governs RAG behavior (OOD, vague, and broad prompts) and enables intent-scoped retrieval---with a safe fallback to the full collection when confidence is low or the user explicitly requests an overview.
+
+\end{document}

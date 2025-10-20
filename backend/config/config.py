@@ -123,6 +123,17 @@ class SystemConfig:
                 "use_openai_url": False,
                 "request_timeout": 30
             },
+
+            # Metrics Configuration
+            "metrics": {
+                "use_spacy_ner": True,
+                "spacy_model": "en_core_web_sm"
+            },
+
+            # Reports Configuration
+            "reports": {
+                "final_reports_path": "./reports/final"
+            },
             
             # Logging Configuration - LOCAL ONLY, NO EXTERNAL TELEMETRY
             "logging": {
@@ -207,6 +218,13 @@ class SystemConfig:
             "RAG_OPENAI_BASE_URL": ("models", "base_url"),
             "RAG_USE_OPENAI_URL": ("models", "use_openai_url"),
             "RAG_LLM_TIMEOUT": ("models", "request_timeout"),
+
+            # Metrics
+            "RAG_METRICS_USE_SPACY_NER": ("metrics", "use_spacy_ner"),
+            "RAG_METRICS_SPACY_MODEL": ("metrics", "spacy_model"),
+
+            # Reports
+            "RAG_REPORTS_FINAL_PATH": ("reports", "final_reports_path"),
             
             # Logging
             "RAG_LOG_LEVEL": ("logging", "level"),
@@ -221,7 +239,7 @@ class SystemConfig:
                     value = int(value)
                 elif key in ["temperature", "max_size_mb", "request_timeout"]:
                     value = float(value)
-                elif key in ["enable_caching", "api_key_required", "enable_cors", "use_openai_url", "auto_extend"]:
+                elif key in ["enable_caching", "api_key_required", "enable_cors", "use_openai_url", "auto_extend", "use_spacy_ner"]:
                     value = value.lower() in ['true', '1', 'yes', 'on']
                 elif key == "cors_origins":
                     value = value.split(',')

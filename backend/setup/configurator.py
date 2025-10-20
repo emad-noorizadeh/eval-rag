@@ -163,6 +163,25 @@ def configure_model_defaults() -> None:
             print("⚠️  Max tokens must be an integer. Keeping existing value.")
 
 
+def configure_metrics() -> None:
+    """Configure context-utilization metric behavior."""
+    current_use_spacy = get_config("metrics", "use_spacy_ner")
+    if current_use_spacy is None:
+        current_use_spacy = True
+    current_use_spacy = bool(current_use_spacy)
+
+    use_spacy = prompt_bool("Enable spaCy NER for context-utilization metrics?", current_use_spacy)
+    set_config("metrics", "use_spacy_ner", use_spacy)
+
+    current_model = get_config("metrics", "spacy_model") or "en_core_web_sm"
+    if use_spacy:
+        spacy_model = prompt("spaCy model for context metrics", current_model)
+        if spacy_model:
+            set_config("metrics", "spacy_model", spacy_model)
+    else:
+        print("↳ spaCy NER disabled; retaining configured model for future use.")
+
+
 def configure_cors() -> None:
     """Allow user to append trusted frontend origins for CORS."""
     current_origins = get_config("api", "cors_origins") or []
@@ -205,6 +224,7 @@ def main() -> None:
     configure_openai()
     configure_models_path()
     configure_model_defaults()
+    configure_metrics()
     configure_cors()
     configure_session_behavior()
 

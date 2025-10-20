@@ -1,0 +1,163 @@
+
+\documentclass[11pt]{article}
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{ragged2e}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{graphicx}
+
+\hypersetup{colorlinks=true,linkcolor=black,urlcolor=blue}
+\newcolumntype{Y}{>{\RaggedRight\arraybackslash}X}
+\setlength{\parskip}{6pt}
+\setlength{\parindent}{0pt}
+\lstset{basicstyle=\ttfamily\small,breaklines=true,frame=single,rulecolor=\color{black!20}}
+
+\title{Scalable Conversational RAG with Guardrails}
+\author{Emad Noorizadeh \\ Bank of America}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This white paper presents a scalable Retrieval-Augmented Generation (RAG) system for conversational workloads with production-grade guardrails. The system combines a robust ingestion and indexing pipeline, a stateful LangGraph orchestration layer, a guarded prompting scheme with strict JSON validation and evidence checks, explicit out-of-domain (OOD) refusal policies, and rich observability. We document the architecture, execution flow, guardrail mechanisms, and metrics. We also summarize our experimental attempts to introduce clarifying questions and why for now we recommend intent classification to govern behavior for vague or broad queries, while preserving a safe fallback to full-collection retrieval.
+\end{abstract}
+
+%\tableofcontents
+
+\section{Introduction}
+Enterprises need conversational assistants that \emph{answer grounded questions} from a controlled corpus while refusing unsupported claims and surfacing clear provenance. Our system targets:
+\begin{itemize}[leftmargin=1.25em]
+  \item \textbf{Reliability}: reject or abstain when retrieval is weak or citations are invalid.
+  \item \textbf{Safety}: never leak facts not present in the grounding context.
+  \item \textbf{Scalability}: efficient ingestion, indexing, and retrieval across growing corpora.
+  \item \textbf{Observability}: end-to-end metrics and logs to explain decisions.
+\end{itemize}
+
+\section{Conversational RAG Flow}
+\subsection{Index}
+\begin{enumerate}[leftmargin=1.25em]
+  \item \textbf{Chunking}: sentence-level splits with metadata.
+  \item \textbf{Embedding}: dense vectors.
+  \item \textbf{Persistence}: vectors in \texttt{ChromaDB} with parsed metadata in \texttt{index/}.
+  \item \textbf{Startup audit}: verify embedding dimensionality; backup/reset mismatched collections to keep retrieval aligned with the active embedding model.
+\end{enumerate}
+
+\subsection{Session }
+Session state retains:
+\begin{itemize}[leftmargin=1.25em]
+  \item \texttt{last\_question}, \texttt{awaiting\_clarification}, \texttt{clarify\_count}, \texttt{topic\_hint}
+  \item The full message transcript for multi-turn reasoning and follow-ups.
+\end{itemize}
+
+\subsection{LangGraph Execution}
+The graph (\texttt{backend/router\_graph.py}) executes:
+\begin{enumerate}[leftmargin=1.25em]
+  \item \textbf{ingest}: append user turn; ensure persistent defaults.
+  \item \textbf{frustration}: scan utterances for tokens (``confusing'', ``hard'', \dots). If triggered, synthesize a friendly clarification prompt and short-circuit the rest.
+  \item \textbf{build\_query}: form \texttt{effective\_question} by stitching prior interpreted question to short fragments; reuse questions inside clarification loops; mark whether history was appended.
+  \item \textbf{retrieve}: call \texttt{RetrievalService.retrieve} with \texttt{RetrievalConfig} (\texttt{top\_k}, \texttt{similarity\_threshold}); cache per-chunk score vectors, \texttt{avg\_similarity}, and any retrieval error on the RAG instance.
+  \item \textbf{answer}: assemble a 3-turn conversation snippet + \texttt{topic\_hint}; construct the guarded prompt (\texttt{get\_rag\_main\_prompt}); call \texttt{RAG.generate\_response}; store the raw structured payload (\texttt{rag\_response}).
+  \item \textbf{decide}: inspect \texttt{rag\_response.metrics}. If \texttt{abstained=true} and a \texttt{clarifying\_question} exists, switch to clarification mode (increment \texttt{clarify\_count}); otherwise, classify answer vs.\ bare abstain; propagate \texttt{answer\_text}, \texttt{interpreted\_question}, decision, and clarification flags.
+  \item \textbf{finalize}: merge via \texttt{ChatAgent.\_create\_intelligent\_metrics}; fuse LLM metrics with retrieval stats (scores, chunk IDs, \texttt{route\_decision}, \texttt{route\_metrics.above\_threshold}); build sources; stamp timestamps; update persistent fields; carry over \texttt{fallback\_reason}; mark responder (\texttt{generated\_by = answer\_llm, router\_guard, retrieval\_error\_handler, clarification\_guard}, \dots).
+\end{enumerate}
+
+
+\section{Retrieval Layer}
+\paragraph{Inputs.} \texttt{effective\_question}, \texttt{RetrievalConfig}\{ \texttt{top\_k}, \texttt{similarity\_threshold} \}.
+
+\paragraph{Outputs.} Top-$k$ semantic hits (text + metadata + scores), \texttt{avg\_similarity}, and cached score vectors.
+\paragraph{Integrity checks.} On index startup, the Chroma config audit aligns dimensionality with the current embedding model and backs up or resets stale collections to avoid silent mismatch errors.
+
+\section{Guarded Generation and Evidence Discipline}
+\subsection{Prompt and Schema}
+The answer node formats chunks as \texttt{C1: ...}, \texttt{C2: ...} and uses a guarded schema prompt. The LLM must return strict JSON with fields for \emph{answer}, \emph{evidence IDs}, \emph{faithfulness/completeness scores}, \emph{interpreted question}, and abstention metadata.
+
+\subsection{Validation Pipeline}
+\begin{enumerate}[leftmargin=1.25em]
+  \item Parse with \texttt{\_parse\_json\_response}; validate with \texttt{\_validate\_response\_schema}.
+  \item Verify cited evidence IDs exist; if any citation is invalid, force abstain (we never present unsupported grounding).
+  \item If the LLM abstains repeatedly despite high similarity, mutate the prompt (\emph{``model abstained despite sufficient grounding context''}) and retry up to \texttt{models.llm\_max\_retry}. If still failing, emit fallback with \texttt{fallback\_reason="abstained\_after\_retry"} and log the excerpt.
+  \item If the model client is missing, produce \emph{model unavailable} abstain; any exception becomes \texttt{fallback\_reason="generation\_exception"}.
+\end{enumerate}
+
+\section{Guardrails and Routing Decisions}
+\subsection{Out-of-Domain (OOD) and Weak Retrieval}
+The retrieve node records \texttt{avg\_similarity} and sets \texttt{route\_metrics.above\_threshold}. If \texttt{avg\_similarity} misses \texttt{chat\_agent.similarity\_threshold} (default $0.45$), \texttt{finalize} labels the response \textbf{router\_guard} and abstains with a clear message.
+
+\subsection{LLM Refusals with Sufficient Context}
+If the model explicitly abstains with valid context and no clarifying question, we mark \textbf{answer\_guard}: a deliberate refusal with sufficient grounding.
+
+\subsection{Clarification Loops and Frustration Guard}
+Clarification loops preserve context by injecting the last question into follow-ups until the user answers or the clarification budget (\texttt{chat\_agent.max\_clarify}) is exhausted. Frustration short-circuits ensure negative statements do not consume retrieval/LLM cycles.
+
+\section{Metrics and Analytics}
+\subsection{Context Utilization and Alignment}
+\texttt{calculate\_context\_utilization\_percentage} synthesizes:
+\begin{itemize}[leftmargin=1.25em]
+  \item \textbf{Grounded precision/recall}: proportion of answer tokens supported by retrieved chunks and coverage of salient chunk content.
+  \item \textbf{Numeric alignment}: consistency of numbers vs.\ sources.
+  \item \textbf{Unsupported terms}: residual tokens not grounded.
+  \item \textbf{Semantic similarity}: MiniLM cosine similarity between Q and A.
+  \item \textbf{Entity coverage}: optional spaCy NER extraction to assess whether key entities are addressed.
+\end{itemize}
+These metrics are fused in \texttt{finalize} with route decisions and guardrail labels so the UI debug panel mirrors backend behavior.
+
+\subsection{Logging for Traceability}
+\texttt{backend.router\_graph.router} and \texttt{backend.rag.rag} log each node with timings, decisions, retrieval stats, fallback reasons, and answer lengths. Combined with metrics, operators can diagnose why a turn produced \texttt{answer\_guard}, \texttt{router\_guard}, or \texttt{retrieval\_error\_handler}.
+
+
+\section{Reliability, Performance, and Scalability}
+\paragraph{Embedding audits.} On startup, collections that mismatch the active embedding model dimension are backed up/reset, preventing silent retrieval skew after model upgrades.
+
+\paragraph{Latency and cost.} The graph avoids unnecessary LLM calls via router and frustration guards; retries are bounded by \texttt{models.request\_timeout} and \texttt{models.llm\_max\_retry}.
+
+\paragraph{Scalability.} Ingestion and indexing are streaming-friendly; retrieval operates over ChromaDB with metadata filters available for future sharding or intent-scoped collections.
+
+\section{Experiments: Clarification Strategies (Summary)}
+We tested two families to introduce clarifying questions without disrupting UX:
+\begin{description}[leftmargin=1.25em,labelindent=0em]
+  \item[LLM policy in the prompt.] We asked the model to propose a clarifying question when a faithful answer would exceed a word budget and require multiple facets. \emph{Outcome:} The model rarely clarified (preference to answer); coupling to abstain meant broad-but-answerable prompts did not trigger; length prediction was weak.
+  \item[Deterministic dispersion gate.] We computed rank-weighted document probabilities $p(d)$ over top-$K$ hits, entropy $H_{\text{doc}}=-\sum_d p(d)\ln p(d)$, perplexity $E_{\text{doc}}=\exp(H_{\text{doc}})$, and predicted length $\widehat{L}=\mu\cdot E_{\text{doc}}$ (online EMA of words-per-mode). \emph{Outcome:} With $K{=}5$, $E_{\text{doc}}$ under-triggered; label noise (boilerplate) yielded poor options; the calibrator drifted when updated on abstains; no post-LLM fallback led to abstain instead of a clarifying question.
+\end{description}
+\textbf{Conclusion.} Clarification adds maintenance and requires deeper retrieval instrumentation (clean labels, $K\ge 30$, stable parent IDs) to be robust. For now, we defer.
+
+\section{Roadmap: Intent Classifier to Govern RAG}
+We will address broad and vague queries via an \textbf{intent classifier}:
+\begin{itemize}[leftmargin=1.25em]
+  \item \textbf{Taxonomy:} e.g., Checking, Savings, Cards, Loans, Preferred Rewards, Fees, Eligibility, Overview/All, OOD.
+  \item \textbf{Training:} bootstrap with silver labels from logs (query $\rightarrow$ clicked family); expand with LLM-assisted labeling and review.
+  \item \textbf{Routing:} if intent confidence $\ge \tau$, retrieve from intent-scoped collections; else fall back to the full collection.
+  \item \textbf{Vague/OOD:} low confidence yields suggestions/chips or abstain; user may explicitly request ``Overview/All'' to scan the full collection.
+\end{itemize}
+This keeps behavior deterministic, reduces coupling to generation prompts, and doubles as a retrieval accelerator.
+
+\section{Configuration Reference (Excerpt)}
+\begin{table}[h]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l l Y@{}}
+\toprule
+\textbf{Key} & \textbf{Default} & \textbf{Description} \\
+\midrule
+\texttt{models.embedding\_model} & (env) & Embedding model for indexing/retrieval. \\
+\texttt{chat\_agent.similarity\_threshold} & 0.45 & Retrieval sufficiency threshold for router guard. \\
+\texttt{models.request\_timeout} & (env) & Timeout for LLM calls. \\
+\texttt{models.llm\_max\_retry} & 1--2 & Retry budget for repair/abstain-after-retry. \\
+\texttt{metrics.use\_spacy\_ner} & true & Enable spaCy-backed entity extraction for context utilization. \\
+\texttt{reports.final\_reports\_path} & \texttt{./reports/final} & Where PDFs appear in the UI. \\
+\texttt{chat\_agent.max\_clarify} & 1 & Clarification loop budget. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Conclusion}
+This system delivers grounded conversational answers with explicit guardrails, robust indexing integrity checks, and full-stack observability. While clarification is valuable, our experiments show it requires additional retrieval instrumentation to avoid UX regressions. An intent classifier will provide the next layer of control for vague and broad prompts, enabling intent-scoped retrieval with safe fallbacks.
+
+\end{document}
